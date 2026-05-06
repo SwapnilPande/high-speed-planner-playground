@@ -28,10 +28,15 @@ def main():
     print(f"  Steps   : {len(traj.t)}")
     print(f"  Duration: {traj.duration:.3f} s")
     print(f"  dt      : {traj.dt*1000:.1f} ms")
-    print(f"  Peak |qd| : {np.abs(traj.qd).max():.4f} rad/s  "
-          f"(limit {constraints.v_max.min():.2f})")
-    print(f"  Peak |qdd|: {np.abs(traj.qdd).max():.4f} rad/s² "
-          f"(limit {constraints.a_max.min():.2f})")
+
+    peak_qd_joint = int(np.abs(traj.qd).max(axis=0).argmax())
+    peak_qd_val = np.abs(traj.qd).max()
+    peak_qdd_joint = int(np.abs(traj.qdd).max(axis=0).argmax())
+    peak_qdd_val = np.abs(traj.qdd).max()
+    print(f"  Peak |qd| : {peak_qd_val:.4f} rad/s  "
+          f"(joint {peak_qd_joint} limit {constraints.v_max[peak_qd_joint]:.2f})")
+    print(f"  Peak |qdd|: {peak_qdd_val:.4f} rad/s² "
+          f"(joint {peak_qdd_joint} limit {constraints.a_max[peak_qdd_joint]:.2f})")
 
     sim = Simulator(model_path=args.model, control_hz=1.0 / traj.dt)
     log = run_playback(sim, traj, render=args.render)
