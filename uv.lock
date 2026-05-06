@@ -98,7 +98,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "numpy" },
     { name = "pytest" },
 ]
 
@@ -110,10 +109,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "numpy", specifier = ">=1.26" },
-    { name = "pytest", specifier = ">=8.0" },
-]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "mujoco"
