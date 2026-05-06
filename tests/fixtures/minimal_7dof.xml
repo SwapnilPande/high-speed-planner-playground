@@ -1,0 +1,42 @@
+<mujoco model="minimal_7dof">
+  <option timestep="0.01"/>
+  <worldbody>
+    <body name="link0" pos="0 0 0">
+      <joint name="j0" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+      <geom type="box" size="0.05 0.05 0.1"/>
+      <body name="link1" pos="0 0 0.2">
+        <joint name="j1" type="hinge" axis="0 1 0" range="-2.09 2.09"/>
+        <geom type="box" size="0.05 0.05 0.1"/>
+        <body name="link2" pos="0 0 0.2">
+          <joint name="j2" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+          <geom type="box" size="0.05 0.05 0.1"/>
+          <body name="link3" pos="0 0 0.2">
+            <joint name="j3" type="hinge" axis="0 1 0" range="-2.09 2.09"/>
+            <geom type="box" size="0.05 0.05 0.1"/>
+            <body name="link4" pos="0 0 0.2">
+              <joint name="j4" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+              <geom type="box" size="0.05 0.05 0.1"/>
+              <body name="link5" pos="0 0 0.2">
+                <joint name="j5" type="hinge" axis="0 1 0" range="-2.09 2.09"/>
+                <geom type="box" size="0.05 0.05 0.1"/>
+                <body name="link6" pos="0 0 0.2">
+                  <joint name="j6" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                  <geom type="box" size="0.05 0.05 0.05"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="a0" joint="j0" kp="500" kv="50"/>
+    <position name="a1" joint="j1" kp="500" kv="50"/>
+    <position name="a2" joint="j2" kp="500" kv="50"/>
+    <position name="a3" joint="j3" kp="500" kv="50"/>
+    <position name="a4" joint="j4" kp="500" kv="50"/>
+    <position name="a5" joint="j5" kp="500" kv="50"/>
+    <position name="a6" joint="j6" kp="500" kv="50"/>
+  </actuator>
+</mujoco>
