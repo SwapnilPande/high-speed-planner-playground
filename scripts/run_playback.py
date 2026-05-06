@@ -1,6 +1,5 @@
 """Play back a joint trajectory on the Kinova Gen3 MuJoCo simulation."""
 import argparse
-import pathlib
 import numpy as np
 
 
