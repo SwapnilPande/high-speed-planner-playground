@@ -16,6 +16,7 @@ class Simulator:
         self._model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
         self._viewer = None
         self._joint_limits = self._model.jnt_range[:N_ARM_JOINTS].copy()  # (7, 2)
+        self._joint_limited = self._model.jnt_limited[:N_ARM_JOINTS].astype(bool)  # (7,)
         mujoco.mj_resetData(self._model, self._data)
 
     def reset(self, q0: np.ndarray | None = None) -> None:
@@ -28,10 +29,10 @@ class Simulator:
     def step(self, qd_cmd: np.ndarray) -> None:
         q_current = self._data.qpos[:N_ARM_JOINTS].copy()
         q_target = q_current + qd_cmd * self._dt
-        q_target = np.clip(
-            q_target,
-            self._joint_limits[:, 0],
-            self._joint_limits[:, 1],
+        q_target[self._joint_limited] = np.clip(
+            q_target[self._joint_limited],
+            self._joint_limits[self._joint_limited, 0],
+            self._joint_limits[self._joint_limited, 1],
         )
         self._data.ctrl[:N_ARM_JOINTS] = q_target
         mujoco.mj_step(self._model, self._data)

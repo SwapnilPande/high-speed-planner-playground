@@ -62,3 +62,66 @@ def test_joint_limit_clipping(sim):
         sim.step(qd_cmd)
     state = sim.get_state()
     assert state.q[0] <= 3.14 + 1e-3
+
+
+def test_unlimited_joints_are_not_clipped(sim):
+    # All joints in minimal_7dof.xml are limited, so create a sim from XML with one unlimited joint
+    import mujoco
+    import tempfile, pathlib
+    xml = """
+<mujoco model="unlimited_test">
+  <option timestep="0.01"/>
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="link0">
+      <joint name="j_unlimited" type="hinge" axis="0 0 1"/>
+      <geom type="box" size="0.05 0.05 0.1"/>
+      <body name="link1" pos="0 0 0.2">
+        <joint name="j_limited" type="hinge" axis="0 1 0" range="-1.0 1.0" limited="true"/>
+        <geom type="box" size="0.05 0.05 0.1"/>
+        <body name="link2" pos="0 0 0.2">
+          <joint name="j2" type="hinge" axis="0 0 1" range="-1.0 1.0" limited="true"/>
+          <geom type="box" size="0.05 0.05 0.1"/>
+          <body name="link3" pos="0 0 0.2">
+            <joint name="j3" type="hinge" axis="0 1 0" range="-1.0 1.0" limited="true"/>
+            <geom type="box" size="0.05 0.05 0.1"/>
+            <body name="link4" pos="0 0 0.2">
+              <joint name="j4" type="hinge" axis="0 0 1" range="-1.0 1.0" limited="true"/>
+              <geom type="box" size="0.05 0.05 0.1"/>
+              <body name="link5" pos="0 0 0.2">
+                <joint name="j5" type="hinge" axis="0 1 0" range="-1.0 1.0" limited="true"/>
+                <geom type="box" size="0.05 0.05 0.1"/>
+                <body name="link6" pos="0 0 0.2">
+                  <joint name="j6" type="hinge" axis="0 0 1" range="-1.0 1.0" limited="true"/>
+                  <geom type="box" size="0.05 0.05 0.05"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="a0" joint="j_unlimited" kp="500" kv="50"/>
+    <position name="a1" joint="j_limited" kp="500" kv="50"/>
+    <position name="a2" joint="j2" kp="500" kv="50"/>
+    <position name="a3" joint="j3" kp="500" kv="50"/>
+    <position name="a4" joint="j4" kp="500" kv="50"/>
+    <position name="a5" joint="j5" kp="500" kv="50"/>
+    <position name="a6" joint="j6" kp="500" kv="50"/>
+  </actuator>
+</mujoco>"""
+    from kinodynamic_planner.sim.simulator import Simulator
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False, mode="w") as f:
+        f.write(xml)
+        tmp_path = f.name
+    s = Simulator(model_path=tmp_path, control_hz=100.0)
+    # Command large velocity on the unlimited joint — should NOT be clipped to 0
+    qd_cmd = np.array([5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    for _ in range(200):
+        s.step(qd_cmd)
+    state = s.get_state()
+    s.close()
+    # Unlimited joint should have moved significantly past 0
+    assert state.q[0] > 0.1
