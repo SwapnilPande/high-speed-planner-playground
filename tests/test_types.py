@@ -46,3 +46,26 @@ def test_trajectory_dt():
         qd=np.zeros((N, 7)),
     )
     assert traj.dt == pytest.approx(0.01)
+
+
+def test_trajectory_qdd_defaults_to_none():
+    N = 10
+    traj = Trajectory(
+        t=np.linspace(0, 1, N),
+        q=np.zeros((N, 7)),
+        qd=np.zeros((N, 7)),
+    )
+    assert traj.qdd is None
+
+
+def test_trajectory_qdd_can_be_set():
+    N = 10
+    qdd = np.ones((N, 7))
+    traj = Trajectory(
+        t=np.linspace(0, 1, N),
+        q=np.zeros((N, 7)),
+        qd=np.zeros((N, 7)),
+        qdd=qdd,
+    )
+    assert traj.qdd is not None
+    assert traj.qdd.shape == (N, 7)

@@ -13,9 +13,10 @@ class RobotState:
 
 @dataclass
 class Trajectory:
-    t: np.ndarray    # time stamps (N,)
-    q: np.ndarray    # joint positions (N, 7)
-    qd: np.ndarray   # joint velocities (N, 7)
+    t: np.ndarray           # time stamps (N,)
+    q: np.ndarray           # joint positions (N, 7)
+    qd: np.ndarray          # joint velocities (N, 7)
+    qdd: np.ndarray | None = None  # joint accelerations (N, 7), None if not computed
 
     @property
     def duration(self) -> float:
