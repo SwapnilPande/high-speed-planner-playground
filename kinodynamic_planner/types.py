@@ -23,4 +23,6 @@ class Trajectory:
 
     @property
     def dt(self) -> float:
+        if len(self.t) < 2:
+            raise ValueError("Trajectory must have at least 2 timesteps to compute dt")
         return float(self.t[1] - self.t[0])

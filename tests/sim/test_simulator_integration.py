@@ -3,7 +3,7 @@ import pathlib
 import numpy as np
 import pytest
 
-KINOVA_MODEL = pathlib.Path("models/kinova_gen3/scene.xml")
+KINOVA_MODEL = pathlib.Path(__file__).parent.parent.parent / "models" / "kinova_gen3" / "scene.xml"
 
 pytestmark = pytest.mark.skipif(
     not KINOVA_MODEL.exists(),

@@ -14,12 +14,13 @@ def run_playback(
         sim.render()
 
     N = len(traj.t)
+    n_joints = traj.q.shape[1]
     log = {
         "t": np.empty(N),
-        "q_cmd": np.empty((N, 7)),
-        "q_actual": np.empty((N, 7)),
-        "qd_cmd": np.empty((N, 7)),
-        "qd_actual": np.empty((N, 7)),
+        "q_cmd": np.empty((N, n_joints)),
+        "q_actual": np.empty((N, n_joints)),
+        "qd_cmd": np.empty((N, n_joints)),
+        "qd_actual": np.empty((N, n_joints)),
     }
 
     for i in range(N):
