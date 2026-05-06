@@ -1,3 +1,4 @@
+import pathlib
 import numpy as np
 import pytest
 from kinodynamic_planner.types import RobotState
@@ -66,8 +67,7 @@ def test_joint_limit_clipping(sim):
 
 def test_unlimited_joints_are_not_clipped(sim):
     # All joints in minimal_7dof.xml are limited, so create a sim from XML with one unlimited joint
-    import mujoco
-    import tempfile, pathlib
+    import tempfile
     xml = """
 <mujoco model="unlimited_test">
   <option timestep="0.01"/>
@@ -117,11 +117,14 @@ def test_unlimited_joints_are_not_clipped(sim):
         f.write(xml)
         tmp_path = f.name
     s = Simulator(model_path=tmp_path, control_hz=100.0)
-    # Command large velocity on the unlimited joint — should NOT be clipped to 0
-    qd_cmd = np.array([5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    for _ in range(200):
-        s.step(qd_cmd)
-    state = s.get_state()
-    s.close()
+    try:
+        # Command large velocity on the unlimited joint — should NOT be clipped to 0
+        qd_cmd = np.array([5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        for _ in range(200):
+            s.step(qd_cmd)
+        state = s.get_state()
+    finally:
+        s.close()
+        pathlib.Path(tmp_path).unlink(missing_ok=True)
     # Unlimited joint should have moved significantly past 0
     assert state.q[0] > 0.1
