@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import mujoco
+import mujoco.viewer
 from kinodynamic_planner.types import RobotState
 
 N_ARM_JOINTS = 7
