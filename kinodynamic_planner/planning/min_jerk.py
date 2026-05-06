@@ -44,12 +44,12 @@ class MinJerkPlanner:
         tau = t / T
 
         # Normalised basis and derivatives
-        s   = 10*tau**3 - 15*tau**4 +  6*tau**5
-        sd  = 30*tau**2 - 60*tau**3 + 30*tau**4   # ds/dτ
-        sdd = 60*tau    -180*tau**2 +120*tau**3    # d²s/dτ²
+        s = 10*tau**3 - 15*tau**4 + 6*tau**5
+        sd = 30*tau**2 - 60*tau**3 + 30*tau**4    # ds/dτ
+        sdd = 60*tau - 180*tau**2 + 120*tau**3    # d²s/dτ²
 
-        q   = q_start[None, :] + dq[None, :] * s[:, None]
-        qd  = dq[None, :] * sd[:, None]  / T
+        q = q_start[None, :] + dq[None, :] * s[:, None]
+        qd = dq[None, :] * sd[:, None] / T
         qdd = dq[None, :] * sdd[:, None] / T**2
 
         return Trajectory(t=t, q=q, qd=qd, qdd=qdd)
