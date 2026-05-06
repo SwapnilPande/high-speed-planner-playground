@@ -45,3 +45,31 @@ def test_load_trajectory_unknown_extension():
     from kinodynamic_planner.runner.playback import load_trajectory
     with pytest.raises(ValueError, match="Unsupported"):
         load_trajectory("trajectory.txt")
+
+
+def test_run_playback_returns_log(sim, short_traj):
+    from kinodynamic_planner.runner.playback import run_playback
+    log = run_playback(sim, short_traj)
+    assert "t" in log
+    assert "q_cmd" in log
+    assert "q_actual" in log
+    assert "qd_cmd" in log
+    assert "qd_actual" in log
+
+
+def test_run_playback_log_length(sim, short_traj):
+    from kinodynamic_planner.runner.playback import run_playback
+    log = run_playback(sim, short_traj)
+    N = len(short_traj.t)
+    assert len(log["t"]) == N
+    assert log["q_cmd"].shape == (N, 7)
+    assert log["q_actual"].shape == (N, 7)
+
+
+def test_run_playback_tracks_velocity_command(sim, short_traj):
+    from kinodynamic_planner.runner.playback import run_playback
+    log = run_playback(sim, short_traj)
+    # Joint 0 should have moved in the positive direction.
+    # With dt=0.01s and qd=0.1 rad/s, the PD controller drives ~0.001 rad/step,
+    # resulting in ~0.002 rad total displacement after 20 steps.
+    assert log["q_actual"][-1, 0] > 0.001
