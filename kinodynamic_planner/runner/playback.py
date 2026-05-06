@@ -1,5 +1,6 @@
 from __future__ import annotations
 import pathlib
+import time
 import numpy as np
 from kinodynamic_planner.types import Trajectory
 
@@ -23,6 +24,7 @@ def run_playback(
         "qd_actual": np.empty((N, n_joints)),
     }
 
+    t_wall_start = time.monotonic()
     for i in range(N):
         qd_cmd = traj.qd[i]
         sim.step(qd_cmd)
@@ -36,6 +38,11 @@ def run_playback(
 
         if render:
             sim.sync_viewer()
+            # Pace to real time: sleep until the next step's wall-clock deadline
+            t_deadline = t_wall_start + traj.t[i]
+            sleep_s = t_deadline - time.monotonic()
+            if sleep_s > 0:
+                time.sleep(sleep_s)
 
     return log
 
