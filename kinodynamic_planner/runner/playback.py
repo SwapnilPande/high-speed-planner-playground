@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pathlib
 import numpy as np
-from kinodynamic_planner.types import Trajectory, RobotState
+from kinodynamic_planner.types import Trajectory
 
 
 def load_trajectory(path: str) -> Trajectory:
