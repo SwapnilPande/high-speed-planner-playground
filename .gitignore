@@ -11,3 +11,6 @@ wheels/
 
 # Test cache
 .pytest_cache/
+
+# Downloaded model files (too large for git)
+models/kinova_gen3/
