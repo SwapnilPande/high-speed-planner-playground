@@ -1,0 +1,22 @@
+[project]
+name = "kinodynamic-planner"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mujoco>=3.2",
+    "numpy>=1.26",
+    "scipy>=1.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "numpy>=1.26",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
