@@ -13,7 +13,7 @@ class Simulator:
         self._dt = 1.0 / control_hz
         self._model.opt.timestep = self._dt
         # Use implicitfast integrator for numerical stability with stiff PD gains
-        self._model.opt.integrator = 3  # mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+        self._model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
         self._viewer = None
         self._joint_limits = self._model.jnt_range[:N_ARM_JOINTS].copy()  # (7, 2)
         mujoco.mj_resetData(self._model, self._data)
