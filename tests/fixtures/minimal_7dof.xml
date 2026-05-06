@@ -1,4 +1,5 @@
 <mujoco model="minimal_7dof">
+  <compiler angle="radian"/>
   <option timestep="0.01"/>
   <worldbody>
     <body name="link0" pos="0 0 0">
