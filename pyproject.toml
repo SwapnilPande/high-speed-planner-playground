@@ -4,9 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "imageio[ffmpeg]>=2.37.3",
+    "kortex-api",
     "mujoco>=3.2",
     "numpy>=1.26",
-    "protobuf>=3.20,<4",
     "ruckig>=0.17.3",
     "toppra>=0.6.3",
 ]
@@ -21,3 +21,9 @@ dev = ["pytest>=8.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+
+[tool.uv]
+override-dependencies = ["protobuf>=3.20,<4"]
+
+[tool.uv.sources]
+kortex-api = { url = "https://artifactory.kinovaapps.com/artifactory/generic-public/kortex/API/2.6.0/kortex_api-2.6.0.post3-py3-none-any.whl" }
