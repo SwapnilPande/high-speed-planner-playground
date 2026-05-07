@@ -128,3 +128,27 @@ def test_unlimited_joints_are_not_clipped(sim):
         pathlib.Path(tmp_path).unlink(missing_ok=True)
     # Unlimited joint should have moved significantly past 0
     assert state.q[0] > 0.1
+
+
+def test_get_ee_position_shape(sim):
+    q = np.zeros(7)
+    pos = sim.get_ee_position(q, body_name="link6")
+    assert pos.shape == (3,)
+
+
+def test_get_ee_position_changes_with_q(sim):
+    pos_a = sim.get_ee_position(np.zeros(7), body_name="link6")
+    pos_b = sim.get_ee_position(np.array([0.0, -0.8, 0.0, -1.5, 0.0, 1.2, 0.0]), body_name="link6")
+    assert not np.allclose(pos_a, pos_b)
+
+
+def test_get_ee_position_does_not_mutate_state(sim):
+    q_before = sim.get_state().q.copy()
+    sim.get_ee_position(np.ones(7) * 0.5, body_name="link6")
+    q_after = sim.get_state().q.copy()
+    np.testing.assert_allclose(q_after, q_before, atol=1e-10)
+
+
+def test_add_sphere_marker_no_viewer_does_not_crash(sim):
+    # viewer is None at this point — should be a silent no-op
+    sim.add_sphere_marker(np.array([0.0, 0.0, 0.5]), rgba=(0, 1, 0, 0.8), radius=0.03)

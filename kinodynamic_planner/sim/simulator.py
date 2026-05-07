@@ -46,9 +46,44 @@ class Simulator:
             tau=self._data.actuator_force[:N_ARM_JOINTS].copy(),
         )
 
+    def get_ee_position(self, q: np.ndarray, body_name: str) -> np.ndarray:
+        """Return world position of `body_name` when the arm is at configuration `q`."""
+        saved = self._data.qpos[:N_ARM_JOINTS].copy()
+        self._data.qpos[:N_ARM_JOINTS] = q
+        mujoco.mj_fwdPosition(self._model, self._data)
+        body_id = self._model.body(body_name).id
+        pos = self._data.xpos[body_id].copy()
+        self._data.qpos[:N_ARM_JOINTS] = saved
+        mujoco.mj_fwdPosition(self._model, self._data)
+        return pos
+
+    def add_sphere_marker(
+        self,
+        pos: np.ndarray,
+        rgba: tuple[float, float, float, float],
+        radius: float = 0.03,
+    ) -> None:
+        """Add a sphere marker to the viewer scene. No-op if viewer is not open."""
+        if self._viewer is None:
+            return
+        scn = self._viewer.user_scn
+        if scn.ngeom >= scn.maxgeom:
+            return
+        g = scn.geoms[scn.ngeom]
+        mujoco.mjv_initGeom(
+            g,
+            mujoco.mjtGeom.mjGEOM_SPHERE,
+            np.full(3, radius),
+            np.array(pos, dtype=np.float64),
+            np.eye(3).flatten(),
+            np.array(rgba, dtype=np.float32),
+        )
+        scn.ngeom += 1
+
     def render(self) -> None:
         if self._viewer is None:
             self._viewer = mujoco.viewer.launch_passive(self._model, self._data)
+            self._viewer.cam.distance = 3.0
 
     def sync_viewer(self) -> None:
         if self._viewer is not None and self._viewer.is_running():
