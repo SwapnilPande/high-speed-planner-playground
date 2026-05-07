@@ -180,7 +180,7 @@ class KinovaArm:
             self._command.actuators[i].velocity = (
                 float(qd_rad_s[i] * _DEG) if qd_rad_s is not None else 0.0
             )
-        self._feedback = self._cyclic.Refresh(self._command, self._cyclic_opts)
+        self._feedback = self._cyclic.Refresh(self._command, 0, self._cyclic_opts)
 
     # ------------------------------------------------------------------
     # Safety
