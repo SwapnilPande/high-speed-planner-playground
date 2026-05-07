@@ -18,7 +18,7 @@ _RAD = math.pi / 180.0   # deg → rad
 _DEG = 180.0 / math.pi   # rad → deg
 
 # Tight timeout for cyclic refresh so the RT loop never blocks long
-_CYCLIC_TIMEOUT_MS = 10
+_CYCLIC_TIMEOUT_MS = 100
 
 
 class KinovaArm:

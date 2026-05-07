@@ -102,6 +102,8 @@ def main() -> None:
     traj = _plan(args, constraints)
     print(f"  Duration : {traj.duration:.3f} s  ({len(traj.t)} steps @ {1/traj.dt:.0f} Hz)")
 
+    _print_trajectory(traj)
+
     # ── Dry-run ───────────────────────────────────────────────────────────
     if args.dry_run:
         log = _dry_run(args, traj)
@@ -149,6 +151,20 @@ def main() -> None:
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
+
+def _print_trajectory(traj, max_rows: int = 50) -> None:
+    """Print a downsampled view of the trajectory: time, q (rad), qd (rad/s)."""
+    N = len(traj.t)
+    idx = np.unique(np.linspace(0, N - 1, min(max_rows, N)).astype(int))
+    header = "  step      t(s)   " + "      ".join(f"q{i}" for i in range(7)) + "   |   " + "    ".join(f"qd{i}" for i in range(7))
+    print(f"\nTrajectory ({len(idx)} of {N} steps shown):")
+    print(header)
+    for i in idx:
+        q_str  = " ".join(f"{v:+7.3f}" for v in traj.q[i])
+        qd_str = " ".join(f"{v:+7.3f}" for v in traj.qd[i])
+        print(f"  {i:5d}  {traj.t[i]:7.3f}   {q_str}   |   {qd_str}")
+    print()
+
 
 def _print_log_summary(log: dict) -> None:
     q_err = np.abs(log["q_actual"] - log["q_cmd"])
