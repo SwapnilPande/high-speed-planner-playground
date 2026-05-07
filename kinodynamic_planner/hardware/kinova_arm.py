@@ -156,10 +156,14 @@ class KinovaArm:
         if result and result[0] == Base_pb2.ACTION_ABORT:
             raise RuntimeError("move_to_joints was aborted by the arm")
 
-    def set_low_level_servoing(self) -> None:
-        """Switch arm to LOW_LEVEL_SERVOING and force actuators into POSITION mode."""
+    def clear_faults(self) -> None:
+        """Clear any latched faults on the arm. Safe to call multiple times."""
         with contextlib.suppress(Exception):
             self._base.ClearFaults()
+
+    def set_low_level_servoing(self) -> None:
+        """Switch arm to LOW_LEVEL_SERVOING and force actuators into POSITION mode."""
+        self.clear_faults()
         self._base.SetServoingMode(Base_pb2.ServoingModeInformation(
             servoing_mode=Base_pb2.LOW_LEVEL_SERVOING
         ))

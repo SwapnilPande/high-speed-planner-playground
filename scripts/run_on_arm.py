@@ -87,7 +87,7 @@ def main() -> None:
     from kinodynamic_planner.planning.base import JointConstraints
     constraints = JointConstraints.kinova_gen3()
     if args.speed_scale != 1.0:
-        if args.speed_scale <= 0.0 or args.speed_scale > 1.0:
+        if args.speed_scale <= 0.0 or args.speed_scale > 10.0:
             raise ValueError(f"--speed-scale must be in (0, 1], got {args.speed_scale}")
         s = args.speed_scale
         constraints = JointConstraints(
@@ -117,6 +117,10 @@ def main() -> None:
 
     print(f"\nConnecting to arm at {args.arm_ip}...")
     with KinovaArm(ip=args.arm_ip, username=args.username, password=args.password) as arm:
+
+        # Clear any latched faults from a prior run before commanding motion
+        print("[reset] Clearing faults...")
+        arm.clear_faults()
 
         # Auto-reset: move arm to trajectory start using high-level API
         print(f"[reset] Moving to start position {np.round(traj.q[0], 3)} ...")
