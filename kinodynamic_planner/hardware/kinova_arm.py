@@ -83,7 +83,7 @@ class KinovaArm:
         self._command.frame_id = self._feedback.frame_id
         for i in range(_NJ):
             a = self._command.actuators.add()
-            a.flags    = 1   # POSITION mode
+            a.flags    = 0
             a.position = self._feedback.actuators[i].position
             a.velocity = 0.0
 
@@ -176,7 +176,7 @@ class KinovaArm:
         """
         self._command.frame_id += 1
         for i in range(_NJ):
-            self._command.actuators[i].position = float(q_rad[i] * _DEG)
+            self._command.actuators[i].position = float((q_rad[i] * _DEG) % 360.0)
             self._command.actuators[i].velocity = (
                 float(qd_rad_s[i] * _DEG) if qd_rad_s is not None else 0.0
             )
