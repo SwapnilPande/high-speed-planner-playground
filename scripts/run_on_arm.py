@@ -26,7 +26,7 @@ def _canonical(q_deg: np.ndarray) -> np.ndarray:
     q = q_deg * np.pi / 180.0
     return (q + np.pi) % (2.0 * np.pi) - np.pi
 
-Q_START = _canonical(np.array([0.0, 295, 180.0, 212.0, 0.0, 345.0, 95.0]))
+Q_START = _canonical(np.array([350, 295, 180.0, 212.0, 0.0, 345.0, 95.0]))
 Q_GOAL  = _canonical(np.array([0.0,  82, 180.0, 292.0, 0.0,  60.0, 95.0]))
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
