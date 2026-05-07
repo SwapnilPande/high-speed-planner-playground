@@ -47,6 +47,8 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Save execution log to .npy file")
     p.add_argument("--yes", "-y", action="store_true",
                    help="Skip confirmation prompt")
+    p.add_argument("--speed-scale", type=float, default=1.0,
+                   help="Scale v_max/a_max/j_max by this factor (e.g. 0.25 for a slow first run)")
     return p
 
 
@@ -84,6 +86,16 @@ def main() -> None:
 
     from kinodynamic_planner.planning.base import JointConstraints
     constraints = JointConstraints.kinova_gen3()
+    if args.speed_scale != 1.0:
+        if args.speed_scale <= 0.0 or args.speed_scale > 1.0:
+            raise ValueError(f"--speed-scale must be in (0, 1], got {args.speed_scale}")
+        s = args.speed_scale
+        constraints = JointConstraints(
+            v_max=constraints.v_max * s,
+            a_max=constraints.a_max * s,
+            j_max=constraints.j_max * s,
+        )
+        print(f"[constraints] Scaled v/a/j limits by {s}")
 
     # ── Plan ──────────────────────────────────────────────────────────────
     print(f"Planning with {args.planner}...")
