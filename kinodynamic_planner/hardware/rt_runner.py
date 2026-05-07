@@ -93,10 +93,16 @@ def _sleep_until(ts: _Timespec) -> None:
     _libc.clock_nanosleep(_CLOCK_MONOTONIC, _TIMER_ABSTIME, ctypes.byref(ts), None)
 
 
-def _prefault(arrays: list[np.ndarray]) -> None:
-    """Touch every element of each array to force OS to map all pages now."""
+def _prefault_zeros(arrays: list[np.ndarray]) -> None:
+    """Initialize log arrays to zero. Pages are mapped as a side effect."""
     for a in arrays:
         a.fill(0)
+
+
+def _prefault_readonly(arrays: list[np.ndarray]) -> None:
+    """Touch every page of each array without modifying its contents."""
+    for a in arrays:
+        a += 0  # in-place no-op; reads every element, writes back unchanged
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -146,7 +152,8 @@ def run_on_hardware(
         _lock_memory()
 
     # Pre-fault all log arrays and trajectory data now so the RT loop is page-fault-free
-    _prefault(list(log.values()) + [traj.q, traj.qd])  # type: ignore[arg-type]
+    _prefault_zeros(list(log.values()))  # type: ignore[arg-type]
+    _prefault_readonly([traj.q, traj.qd])
 
     stop_event = threading.Event()
     exc_holder: list[BaseException | None] = [None]
