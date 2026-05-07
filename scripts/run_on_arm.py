@@ -132,8 +132,16 @@ def main() -> None:
         print("[reset] Clearing faults...")
         arm.clear_faults()
 
+        # Show where the arm actually is so we can compare with the target.
+        q_now, _ = arm.read_joint_state()
+        print(f"[reset] Current pose (rad): {np.round(q_now, 3)}")
+        print(f"[reset] Current pose (deg): {np.round(np.degrees(q_now), 1)}")
+        target_deg_api = (np.degrees(traj.q[0]) % 360.0)
+        print(f"[reset] Target  pose (rad): {np.round(traj.q[0], 3)}")
+        print(f"[reset] Target  pose (deg, API form): {np.round(target_deg_api, 1)}")
+
         # Auto-reset: move arm to trajectory start using high-level API
-        print(f"[reset] Moving to start position {np.round(traj.q[0], 3)} ...")
+        print(f"[reset] Moving to start position ...")
         arm.move_to_joints(traj.q[0])
         print("[reset] Done.")
 
