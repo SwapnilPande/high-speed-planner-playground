@@ -8,7 +8,7 @@ import numpy as np
 # Kortex API — assumed installed on the Jetson
 from kortex_api.RouterClient import RouterClient, RouterClientSendOptions
 from kortex_api.SessionManager import SessionManager
-from kortex_api.TransportClientTcp import TransportClientTcp
+from kortex_api.TCPTransport import TCPTransport
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
@@ -44,7 +44,7 @@ class KinovaArm:
         self._password = password
         self._port     = port
 
-        self._transport:    TransportClientTcp | None  = None
+        self._transport:    TCPTransport | None  = None
         self._router:       RouterClient | None        = None
         self._session_mgr:  SessionManager | None      = None
         self._base:         BaseClient | None          = None
@@ -58,7 +58,7 @@ class KinovaArm:
     # ------------------------------------------------------------------
 
     def connect(self) -> None:
-        self._transport = TransportClientTcp()
+        self._transport = TCPTransport()
         self._transport.connect(self._ip, self._port)
 
         self._router = RouterClient(self._transport, error_callback=self._on_error)
