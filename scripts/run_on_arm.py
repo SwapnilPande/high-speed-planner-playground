@@ -167,7 +167,8 @@ def _print_trajectory(traj, max_rows: int = 50) -> None:
 
 
 def _print_log_summary(log: dict) -> None:
-    q_err = np.abs(log["q_actual"] - log["q_cmd"])
+    delta = (log["q_actual"] - log["q_cmd"] + np.pi) % (2 * np.pi) - np.pi
+    q_err = np.abs(delta)
     print(f"\nTracking:")
     print(f"  Mean position error : {q_err.mean():.4f} rad")
     print(f"  Max  position error : {q_err.max():.4f} rad")
