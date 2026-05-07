@@ -175,9 +175,18 @@ class KinovaArm:
             raise RuntimeError(f"move_to_joints was aborted by the arm:\n{detail}")
 
     def clear_faults(self) -> None:
-        """Clear any latched faults on the arm. Safe to call multiple times."""
+        """Clear faults and ensure the arm is in SINGLE_LEVEL_SERVOING.
+
+        A prior run that exited without proper cleanup can leave the arm in
+        LOW_LEVEL_SERVOING, which causes high-level actions like
+        REACH_JOINT_ANGLES to fail with METHOD_FAILED.
+        """
         with contextlib.suppress(Exception):
             self._base.ClearFaults()
+        with contextlib.suppress(Exception):
+            self._base.SetServoingMode(Base_pb2.ServoingModeInformation(
+                servoing_mode=Base_pb2.SINGLE_LEVEL_SERVOING
+            ))
 
     def set_low_level_servoing(self) -> None:
         """Switch arm to LOW_LEVEL_SERVOING and force actuators into POSITION mode."""
