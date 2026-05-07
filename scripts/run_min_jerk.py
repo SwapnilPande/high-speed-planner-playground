@@ -56,7 +56,7 @@ def main():
         # Settle: hold current position for 2 s so the arm reaches Q_GOAL
         settle_steps = int(2.0 / traj.dt)
         for _ in range(settle_steps):
-            sim.step(np.zeros(7))
+            sim.step_pos(q_goal)
             sim.sync_viewer()
         print("Trajectory complete. Close the viewer window to exit.")
         while sim.is_viewer_open():
