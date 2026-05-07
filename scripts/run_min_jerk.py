@@ -39,6 +39,16 @@ def main():
           f"(joint {peak_qdd_joint} limit {constraints.a_max[peak_qdd_joint]:.2f})")
 
     sim = Simulator(model_path=args.model, control_hz=1.0 / traj.dt)
+
+    if args.render:
+        sim.render()  # opens viewer zoomed out (distance=3.0)
+        start_ee = sim.get_ee_position(q_start, body_name="bracelet_link")
+        goal_ee  = sim.get_ee_position(q_goal,  body_name="bracelet_link")
+        sim.add_sphere_marker(start_ee, rgba=(0.0, 1.0, 0.0, 0.8))  # green = start
+        sim.add_sphere_marker(goal_ee,  rgba=(1.0, 0.0, 0.0, 0.8))  # red   = goal
+        sim.sync_viewer()
+        input("Press Enter to play...")
+
     log = run_playback(sim, traj, render=args.render)
     sim.close()
 
