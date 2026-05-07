@@ -53,6 +53,12 @@ class KinovaArm:
         self._base:         BaseClient | None          = None
         self._cyclic:       BaseCyclicClient | None    = None
         self._actuator_cfg: ActuatorConfigClient | None = None
+        # Cached references and buffers so the RT loop doesn't re-traverse
+        # protobuf descriptors or allocate ndarrays each cycle.
+        self._cmd_actuators: list | None = None
+        self._fb_actuators:  list | None = None
+        self._q_buf  = np.empty(_NJ)
+        self._qd_buf = np.empty(_NJ)
         self._feedback:     BaseCyclic_pb2.Feedback | None = None
         self._command:      BaseCyclic_pb2.Command | None  = None
 
@@ -95,6 +101,10 @@ class KinovaArm:
             a.flags    = 0
             a.position = self._feedback.actuators[i].position
             a.velocity = 0.0
+        # Cache actuator submessage refs so the RT loop avoids one descriptor
+        # traversal per field write.
+        self._cmd_actuators = list(self._command.actuators)
+        self._fb_actuators  = list(self._feedback.actuators)
 
     def disconnect(self) -> None:
         self._restore_high_level()
@@ -169,12 +179,17 @@ class KinovaArm:
         ))
         # Seed command from current feedback so the priming frame is a no-op
         self._feedback = self._cyclic.RefreshFeedback()
+        self._fb_actuators = list(self._feedback.actuators)
         self._command.frame_id = self._feedback.frame_id
+        cmd_acts = self._cmd_actuators
+        fb_acts  = self._fb_actuators
         for i in range(_NJ):
-            self._command.actuators[i].position   = self._feedback.actuators[i].position
-            self._command.actuators[i].velocity   = 0.0
-            self._command.actuators[i].command_id = self._command.frame_id
+            a = cmd_acts[i]
+            a.position   = fb_acts[i].position
+            a.velocity   = 0.0
+            a.command_id = self._command.frame_id
         self._feedback = self._cyclic.Refresh(self._command, 0)
+        self._fb_actuators = list(self._feedback.actuators)
 
         # Force every actuator into POSITION mode (a prior torque-control run
         # may have left them in TORQUE; SetControlMode persists across servoing-
@@ -192,11 +207,15 @@ class KinovaArm:
         """Send a position-passthrough cyclic frame to keep low-level mode alive."""
         fid = (self._command.frame_id + 1) & 0xFFFF
         self._command.frame_id = fid
+        cmd_acts = self._cmd_actuators
+        fb_acts  = self._fb_actuators
         for i in range(_NJ):
-            self._command.actuators[i].position   = self._feedback.actuators[i].position
-            self._command.actuators[i].velocity   = 0.0
-            self._command.actuators[i].command_id = fid
+            a = cmd_acts[i]
+            a.position   = fb_acts[i].position
+            a.velocity   = 0.0
+            a.command_id = fid
         self._feedback = self._cyclic.Refresh(self._command, 0)
+        self._fb_actuators = list(self._feedback.actuators)
 
     def _restore_high_level(self) -> None:
         if self._actuator_cfg is not None:
@@ -216,10 +235,17 @@ class KinovaArm:
     # ------------------------------------------------------------------
 
     def read_joint_state(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return (q_rad, qd_rad_s) from the most recent Refresh feedback."""
-        fb = self._feedback
-        q  = np.array([fb.actuators[i].position for i in range(_NJ)]) * _RAD
-        qd = np.array([fb.actuators[i].velocity for i in range(_NJ)]) * _RAD
+        """Return (q_rad, qd_rad_s) from the most recent Refresh feedback.
+
+        Returns the same preallocated buffers each call — copy if you need to
+        retain values across the next read.
+        """
+        fb_acts = self._fb_actuators
+        q, qd = self._q_buf, self._qd_buf
+        for i in range(_NJ):
+            a = fb_acts[i]
+            q[i]  = a.position * _RAD
+            qd[i] = a.velocity * _RAD
         return q, qd
 
     def send_joint_positions(
@@ -233,13 +259,14 @@ class KinovaArm:
         """
         fid = (self._command.frame_id + 1) & 0xFFFF
         self._command.frame_id = fid
+        cmd_acts = self._cmd_actuators
         for i in range(_NJ):
-            self._command.actuators[i].position   = float((q_rad[i] * _DEG) % 360.0)
-            self._command.actuators[i].velocity   = (
-                float(qd_rad_s[i] * _DEG) if qd_rad_s is not None else 0.0
-            )
-            self._command.actuators[i].command_id = fid
+            a = cmd_acts[i]
+            a.position   = float((q_rad[i] * _DEG) % 360.0)
+            a.velocity   = float(qd_rad_s[i] * _DEG) if qd_rad_s is not None else 0.0
+            a.command_id = fid
         self._feedback = self._cyclic.Refresh(self._command, 0)
+        self._fb_actuators = list(self._feedback.actuators)
 
     # ------------------------------------------------------------------
     # Safety
