@@ -13,11 +13,11 @@ class JointConstraints:
 
     @staticmethod
     def kinova_gen3() -> "JointConstraints":
-        """Conservative published limits for the Kinova Gen3 7DOF."""
+        """Kinova Gen3 7DOF limits. Velocity from datasheet; accel/jerk from JointHardLimits."""
         return JointConstraints(
             v_max=np.array([1.39, 1.39, 1.39, 1.39, 1.22, 1.22, 1.22]),
-            a_max=np.full(7, 8.0),
-            j_max=np.full(7, 50.0),
+            a_max=np.array([5.2,  5.2,  5.2,  5.2,  10.0, 10.0, 10.0]),
+            j_max=np.full(7, 10.0),
         )
 
 

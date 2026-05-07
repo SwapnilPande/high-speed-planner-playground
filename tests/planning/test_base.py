@@ -22,3 +22,16 @@ def test_kinova_gen3_velocity_limits():
     # Large joints (0-3): 1.39 rad/s; small joints (4-6): 1.22 rad/s
     np.testing.assert_allclose(c.v_max[:4], 1.39)
     np.testing.assert_allclose(c.v_max[4:], 1.22)
+
+
+def test_kinova_gen3_accel_limits():
+    c = JointConstraints.kinova_gen3()
+    # From Kinova JointHardLimits config
+    np.testing.assert_allclose(c.a_max[:4], 5.2)
+    np.testing.assert_allclose(c.a_max[4:], 10.0)
+
+
+def test_kinova_gen3_jerk_limits():
+    c = JointConstraints.kinova_gen3()
+    # From Kinova JointHardLimits config — uniform across all joints
+    np.testing.assert_allclose(c.j_max, 10.0)
