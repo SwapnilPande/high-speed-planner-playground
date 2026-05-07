@@ -61,7 +61,7 @@ class KinovaArm:
         self._transport = TCPTransport()
         self._transport.connect(self._ip, self._port)
 
-        self._router = RouterClient(self._transport, error_callback=self._on_error)
+        self._router = RouterClient(self._transport, self._on_error)
 
         session_info = Common_pb2.CreateSessionInfo()
         session_info.username                       = self._username
