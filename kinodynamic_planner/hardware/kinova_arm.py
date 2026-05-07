@@ -10,9 +10,10 @@ from kortex_api.RouterClient import RouterClient, RouterClientSendOptions
 from kortex_api.SessionManager import SessionManager
 from kortex_api.TCPTransport import TCPTransport
 from kortex_api.UDPTransport import UDPTransport
+from kortex_api.autogen.client_stubs.ActuatorConfigClientRpc import ActuatorConfigClient
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
-from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2, Session_pb2
+from kortex_api.autogen.messages import ActuatorConfig_pb2, Base_pb2, BaseCyclic_pb2, Common_pb2, Session_pb2
 
 _NJ = 7
 _RAD = math.pi / 180.0   # deg → rad
@@ -51,6 +52,7 @@ class KinovaArm:
         self._udp_session:  SessionManager | None      = None
         self._base:         BaseClient | None          = None
         self._cyclic:       BaseCyclicClient | None    = None
+        self._actuator_cfg: ActuatorConfigClient | None = None
         self._feedback:     BaseCyclic_pb2.Feedback | None = None
         self._command:      BaseCyclic_pb2.Command | None  = None
 
@@ -80,8 +82,9 @@ class KinovaArm:
         self._udp_session = SessionManager(self._udp_router)
         self._udp_session.CreateSession(session_info)
 
-        self._base   = BaseClient(self._tcp_router)
-        self._cyclic = BaseCyclicClient(self._udp_router)
+        self._base         = BaseClient(self._tcp_router)
+        self._cyclic       = BaseCyclicClient(self._udp_router)
+        self._actuator_cfg = ActuatorConfigClient(self._tcp_router)
 
         # Read initial feedback; allocate command with matching frame_id
         self._feedback = self._cyclic.RefreshFeedback()
@@ -154,14 +157,13 @@ class KinovaArm:
             raise RuntimeError("move_to_joints was aborted by the arm")
 
     def set_low_level_servoing(self) -> None:
-        """Switch arm to LOW_LEVEL_SERVOING. Must be called before the RT loop."""
+        """Switch arm to LOW_LEVEL_SERVOING and force actuators into POSITION mode."""
         with contextlib.suppress(Exception):
             self._base.ClearFaults()
         self._base.SetServoingMode(Base_pb2.ServoingModeInformation(
             servoing_mode=Base_pb2.LOW_LEVEL_SERVOING
         ))
-        # Prime one cyclic frame so command frame_id and firmware reference align
-        # before the RT loop starts pumping at full rate.
+        # Seed command from current feedback so the priming frame is a no-op
         self._feedback = self._cyclic.RefreshFeedback()
         self._command.frame_id = self._feedback.frame_id
         for i in range(_NJ):
@@ -170,7 +172,35 @@ class KinovaArm:
             self._command.actuators[i].command_id = self._command.frame_id
         self._feedback = self._cyclic.Refresh(self._command, 0)
 
+        # Force every actuator into POSITION mode (a prior torque-control run
+        # may have left them in TORQUE; SetControlMode persists across servoing-
+        # mode changes). Each call is a slow TCP RPC, so pump the cyclic stream
+        # between calls to keep the firmware's low-level watchdog satisfied.
+        cm = ActuatorConfig_pb2.ControlModeInformation()
+        cm.control_mode = ActuatorConfig_pb2.POSITION
+        for idx in range(1, _NJ + 1):
+            self._actuator_cfg.SetControlMode(cm, idx)
+            self._pump_refresh()
+        for _ in range(10):
+            self._pump_refresh()
+
+    def _pump_refresh(self) -> None:
+        """Send a position-passthrough cyclic frame to keep low-level mode alive."""
+        fid = (self._command.frame_id + 1) & 0xFFFF
+        self._command.frame_id = fid
+        for i in range(_NJ):
+            self._command.actuators[i].position   = self._feedback.actuators[i].position
+            self._command.actuators[i].velocity   = 0.0
+            self._command.actuators[i].command_id = fid
+        self._feedback = self._cyclic.Refresh(self._command, 0)
+
     def _restore_high_level(self) -> None:
+        if self._actuator_cfg is not None:
+            cm = ActuatorConfig_pb2.ControlModeInformation()
+            cm.control_mode = ActuatorConfig_pb2.POSITION
+            for idx in range(1, _NJ + 1):
+                with contextlib.suppress(Exception):
+                    self._actuator_cfg.SetControlMode(cm, idx)
         with contextlib.suppress(Exception):
             if self._base:
                 self._base.SetServoingMode(Base_pb2.ServoingModeInformation(
