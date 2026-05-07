@@ -130,6 +130,22 @@ def test_unlimited_joints_are_not_clipped(sim):
     assert state.q[0] > 0.1
 
 
+def test_step_pos_reaches_target(sim):
+    q_target = np.array([0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    for _ in range(200):
+        sim.step_pos(q_target)
+    state = sim.get_state()
+    np.testing.assert_allclose(state.q, q_target, atol=1e-2)
+
+
+def test_step_pos_respects_joint_limits(sim):
+    q_beyond = np.full(7, 10.0)  # well beyond any joint limit
+    for _ in range(100):
+        sim.step_pos(q_beyond)
+    state = sim.get_state()
+    assert np.all(state.q <= 3.15)
+
+
 def test_get_ee_position_shape(sim):
     q = np.zeros(7)
     pos = sim.get_ee_position(q, body_name="link6")

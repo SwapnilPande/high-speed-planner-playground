@@ -26,14 +26,13 @@ def run_playback(
 
     t_wall_start = time.monotonic()
     for i in range(N):
-        qd_cmd = traj.qd[i]
-        sim.step(qd_cmd)
+        sim.step_pos(traj.q[i])
         state = sim.get_state()
 
         log["t"][i] = state.t
         log["q_cmd"][i] = traj.q[i]
         log["q_actual"][i] = state.q
-        log["qd_cmd"][i] = qd_cmd
+        log["qd_cmd"][i] = traj.qd[i]
         log["qd_actual"][i] = state.qd
 
         if render:

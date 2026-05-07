@@ -42,7 +42,9 @@ def test_kinova_playback_runs(kinova_sim):
     t = np.linspace(0, 0.5, N)
     qd = np.zeros((N, 7))
     qd[:, 1] = 0.1  # limited joint — reliable tracking
-    traj = Trajectory(t=t, q=np.zeros((N, 7)), qd=qd)
+    q = np.zeros((N, 7))
+    q[:, 1] = 0.1 * t  # integrate: ramp to 0.05 rad
+    traj = Trajectory(t=t, q=q, qd=qd)
     log = run_playback(kinova_sim, traj)
     assert log["q_actual"][-1, 1] > 0.001
 
@@ -50,11 +52,12 @@ def test_kinova_playback_runs(kinova_sim):
 def test_kinova_unlimited_joint_responds(kinova_sim):
     from kinodynamic_planner.types import Trajectory
     from kinodynamic_planner.runner.playback import run_playback
-    # Unlimited joint (j0) needs larger command and more steps due to high inertia + force limits
     N = 200
     t = np.linspace(0, 2.0, N)
     qd = np.zeros((N, 7))
-    qd[:, 0] = 2.0  # large velocity on the unlimited base rotation joint
-    traj = Trajectory(t=t, q=np.zeros((N, 7)), qd=qd)
+    qd[:, 0] = 0.5  # base rotation — unlimited joint
+    q = np.zeros((N, 7))
+    q[:, 0] = 0.5 * t  # integrate: ramp to 1.0 rad
+    traj = Trajectory(t=t, q=q, qd=qd)
     log = run_playback(kinova_sim, traj)
     assert log["q_actual"][-1, 0] > 0.01

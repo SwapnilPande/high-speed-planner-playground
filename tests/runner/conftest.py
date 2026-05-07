@@ -19,7 +19,8 @@ def sim():
 def short_traj():
     N = 20
     t = np.linspace(0, 0.19, N)
-    q = np.zeros((N, 7))
     qd = np.zeros((N, 7))
     qd[:, 0] = 0.1  # slow constant velocity on joint 0
+    q = np.zeros((N, 7))
+    q[:, 0] = 0.1 * t  # integrate: position ramp on joint 0
     return Trajectory(t=t, q=q, qd=qd)

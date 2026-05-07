@@ -38,6 +38,17 @@ class Simulator:
         self._data.ctrl[:N_ARM_JOINTS] = q_target
         mujoco.mj_step(self._model, self._data)
 
+    def step_pos(self, q_target: np.ndarray) -> None:
+        """Advance simulation with a direct position setpoint (preferred for trajectory replay)."""
+        clipped = q_target.copy()
+        clipped[self._joint_limited] = np.clip(
+            clipped[self._joint_limited],
+            self._joint_limits[self._joint_limited, 0],
+            self._joint_limits[self._joint_limited, 1],
+        )
+        self._data.ctrl[:N_ARM_JOINTS] = clipped
+        mujoco.mj_step(self._model, self._data)
+
     def get_state(self) -> RobotState:
         return RobotState(
             t=float(self._data.time),

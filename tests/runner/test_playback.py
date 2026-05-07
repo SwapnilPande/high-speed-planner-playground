@@ -66,10 +66,8 @@ def test_run_playback_log_length(sim, short_traj):
     assert log["q_actual"].shape == (N, 7)
 
 
-def test_run_playback_tracks_velocity_command(sim, short_traj):
+def test_run_playback_tracks_position_command(sim, short_traj):
     from kinodynamic_planner.runner.playback import run_playback
     log = run_playback(sim, short_traj)
-    # Joint 0 should have moved in the positive direction.
-    # With dt=0.01s and qd=0.1 rad/s, the PD controller drives ~0.001 rad/step,
-    # resulting in ~0.002 rad total displacement after 20 steps.
-    assert log["q_actual"][-1, 0] > 0.001
+    # Joint 0 commanded to 0.1*t[-1] = 0.019 rad; PD controller should track closely.
+    assert log["q_actual"][-1, 0] > 0.01
