@@ -96,6 +96,36 @@ class Simulator:
             self._viewer = mujoco.viewer.launch_passive(self._model, self._data)
             self._viewer.cam.distance = 3.0
 
+    @property
+    def model(self):
+        return self._model
+
+    @property
+    def data(self):
+        return self._data
+
+    def get_camera_state(self) -> dict | None:
+        """Return current viewer camera state, or None if viewer is not open."""
+        if self._viewer is None:
+            return None
+        cam = self._viewer.cam
+        return {
+            "azimuth": float(cam.azimuth),
+            "elevation": float(cam.elevation),
+            "distance": float(cam.distance),
+            "lookat": list(cam.lookat),
+        }
+
+    def set_camera_state(self, state: dict) -> None:
+        """Apply a saved camera state to the viewer. No-op if viewer is not open."""
+        if self._viewer is None:
+            return
+        cam = self._viewer.cam
+        cam.azimuth = state["azimuth"]
+        cam.elevation = state["elevation"]
+        cam.distance = state["distance"]
+        cam.lookat[:] = state["lookat"]
+
     def is_viewer_open(self) -> bool:
         return self._viewer is not None and self._viewer.is_running()
 

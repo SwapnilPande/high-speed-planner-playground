@@ -1,5 +1,7 @@
 """Plan a min-jerk trajectory from Q_START to Q_GOAL and play it back in MuJoCo."""
 import argparse
+import json
+import pathlib
 import time
 import numpy as np
 
@@ -8,14 +10,17 @@ def main():
     parser = argparse.ArgumentParser(
         description="Min-jerk trajectory demo on the Kinova Gen3"
     )
-    parser.add_argument("--model",  default="models/kinova_gen3/scene.xml")
-    parser.add_argument("--render", action="store_true")
-    parser.add_argument("--log",    default=None, help="Save playback log to .npy")
+    parser.add_argument("--model",   default="models/kinova_gen3/scene.xml")
+    parser.add_argument("--render",  action="store_true")
+    parser.add_argument("--record",  default=None, metavar="FILE", help="Save rendered video to .mp4")
+    parser.add_argument("--camera",  default="camera.json", help="Camera state file (save/load)")
+    parser.add_argument("--log",     default=None, help="Save playback log to .npy")
     args = parser.parse_args()
 
     from kinodynamic_planner.planning.min_jerk import MinJerkPlanner
     from kinodynamic_planner.planning.base import JointConstraints
     from kinodynamic_planner.sim.simulator import Simulator
+    from kinodynamic_planner.sim.recorder import VideoRecorder
     from kinodynamic_planner.runner.playback import run_playback
 
     q_start = np.zeros(7)
@@ -40,9 +45,17 @@ def main():
           f"(joint {peak_qdd_joint} limit {constraints.a_max[peak_qdd_joint]:.2f})")
 
     sim = Simulator(model_path=args.model, control_hz=1.0 / traj.dt)
+    camera_path = pathlib.Path(args.camera)
+
+    recorder = None
+    if args.record:
+        recorder = VideoRecorder(sim, fps=30)
+        recorder.set_dt(traj.dt)
 
     if args.render:
         sim.render()  # opens viewer zoomed out (distance=3.0)
+        if camera_path.exists():
+            sim.set_camera_state(json.loads(camera_path.read_text()))
         start_ee = sim.get_ee_position(q_start, body_name="bracelet_link")
         goal_ee  = sim.get_ee_position(q_goal,  body_name="bracelet_link")
         sim.add_sphere_marker(start_ee, rgba=(0.0, 1.0, 0.0, 0.8))  # green = start
@@ -50,24 +63,33 @@ def main():
         sim.sync_viewer()
         input("Press Enter to play...")
 
-    log = run_playback(sim, traj, render=args.render)
+    log = run_playback(sim, traj, render=args.render, recorder=recorder)
+
+    if args.render or recorder:
+        settle_steps = int(2.0 / traj.dt)
+        for i in range(settle_steps):
+            sim.step_pos(q_goal)
+            if args.render and i % max(1, round(0.01 / traj.dt)) == 0:
+                sim.sync_viewer()
+            if recorder and i % recorder.every == 0:
+                recorder.capture(sim.get_camera_state())
 
     if args.render:
-        # Settle: hold current position for 2 s so the arm reaches Q_GOAL
-        settle_steps = int(2.0 / traj.dt)
-        for _ in range(settle_steps):
-            sim.step_pos(q_goal)
-            sim.sync_viewer()
         print("Trajectory complete. Close the viewer window to exit.")
         while sim.is_viewer_open():
             sim.sync_viewer()
             time.sleep(0.05)
+        camera_path.write_text(json.dumps(sim.get_camera_state() or {}, indent=2))
+        print(f"Camera state saved to {camera_path}")
 
     sim.close()
 
     q_err = np.abs(log["q_actual"] - log["q_cmd"])
     print(f"  Mean position error: {q_err.mean():.4f} rad")
     print(f"  Max  position error: {q_err.max():.4f} rad")
+
+    if recorder and args.record:
+        recorder.save(args.record)
 
     if args.log:
         np.save(args.log, log)

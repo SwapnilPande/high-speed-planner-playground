@@ -9,6 +9,7 @@ def run_playback(
     sim,
     traj: Trajectory,
     render: bool = False,
+    recorder=None,
 ) -> dict:
     sim.reset()
     if render:
@@ -37,6 +38,9 @@ def run_playback(
         log["q_actual"][i] = state.q
         log["qd_cmd"][i] = traj.qd[i]
         log["qd_actual"][i] = state.qd
+
+        if recorder is not None and i % recorder.every == 0:
+            recorder.capture(sim.get_camera_state())
 
         if render and i % render_every == 0:
             sim.sync_viewer()
