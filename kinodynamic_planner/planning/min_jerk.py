@@ -3,7 +3,7 @@ import numpy as np
 from kinodynamic_planner.types import Trajectory
 from kinodynamic_planner.planning.base import JointConstraints
 
-_SAMPLE_HZ = 100.0
+_SAMPLE_HZ = 1000.0
 
 # Peak values of the normalised 5th-order basis and its derivatives
 _V_PEAK = 15.0 / 8.0                        # |s′|_max  at τ=0.5

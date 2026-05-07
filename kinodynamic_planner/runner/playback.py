@@ -24,6 +24,9 @@ def run_playback(
         "qd_actual": np.empty((N, n_joints)),
     }
 
+    # Sync viewer at ~100 Hz regardless of trajectory rate (display can't use more)
+    render_every = max(1, round(0.01 / traj.dt)) if render else 1
+
     t_wall_start = time.monotonic()
     for i in range(N):
         sim.step_pos(traj.q[i])
@@ -35,9 +38,9 @@ def run_playback(
         log["qd_cmd"][i] = traj.qd[i]
         log["qd_actual"][i] = state.qd
 
-        if render:
+        if render and i % render_every == 0:
             sim.sync_viewer()
-            # Pace to real time: sleep until the next step's wall-clock deadline
+            # Pace to real time: sleep until this render frame's wall-clock deadline
             t_deadline = t_wall_start + traj.t[i]
             sleep_s = t_deadline - time.monotonic()
             if sleep_s > 0:
