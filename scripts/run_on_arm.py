@@ -29,7 +29,7 @@ def _canonical(q_deg: np.ndarray) -> np.ndarray:
     return (q + np.pi) % (2.0 * np.pi) - np.pi
 
 Q_START = _canonical(np.array([90.0, 295, 180.0, 213.0, 0.0, 345.0, 95.0]))
-Q_WAYPOINT = _canonical(np.array([83.0, 75, 175.0, 267.0, 0.0, 78.0, 95.0]))
+Q_WAYPOINT = _canonical(np.array([78.0, 68, 173.0, 235.0, 343, 99.0, 96.0]))
 Q_GOAL  = _canonical(np.array([82.0,  80, 180.0, 283.0, 0.0,  68.0, 93.0]))
 
 # Continuous joints can rotate past ±π — bounded joints (indices 1, 3, 5) cannot.
