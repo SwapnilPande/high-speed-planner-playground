@@ -1,5 +1,6 @@
 """Plan a min-jerk trajectory from Q_START to Q_GOAL and play it back in MuJoCo."""
 import argparse
+import time
 import numpy as np
 
 
@@ -50,6 +51,18 @@ def main():
         input("Press Enter to play...")
 
     log = run_playback(sim, traj, render=args.render)
+
+    if args.render:
+        # Settle: hold current position for 2 s so the arm reaches Q_GOAL
+        settle_steps = int(2.0 / traj.dt)
+        for _ in range(settle_steps):
+            sim.step(np.zeros(7))
+            sim.sync_viewer()
+        print("Trajectory complete. Close the viewer window to exit.")
+        while sim.is_viewer_open():
+            sim.sync_viewer()
+            time.sleep(0.05)
+
     sim.close()
 
     q_err = np.abs(log["q_actual"] - log["q_cmd"])

@@ -85,6 +85,9 @@ class Simulator:
             self._viewer = mujoco.viewer.launch_passive(self._model, self._data)
             self._viewer.cam.distance = 3.0
 
+    def is_viewer_open(self) -> bool:
+        return self._viewer is not None and self._viewer.is_running()
+
     def sync_viewer(self) -> None:
         if self._viewer is not None and self._viewer.is_running():
             self._viewer.sync()
