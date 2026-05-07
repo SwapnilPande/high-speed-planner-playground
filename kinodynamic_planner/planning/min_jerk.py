@@ -3,8 +3,6 @@ import numpy as np
 from kinodynamic_planner.types import Trajectory
 from kinodynamic_planner.planning.base import JointConstraints
 
-_SAMPLE_HZ = 1000.0
-
 # Peak values of the normalised 5th-order basis and its derivatives
 _V_PEAK = 15.0 / 8.0                        # |s′|_max  at τ=0.5
 _A_PEAK = 10.0 * np.sqrt(3.0) / 3.0         # |s″|_max  at τ=(3-√3)/6
@@ -17,6 +15,9 @@ class MinJerkPlanner:
     Time T is chosen as the smallest value that satisfies every per-joint
     velocity, acceleration, and jerk limit simultaneously.
     """
+
+    def __init__(self, dt: float = 1e-3) -> None:
+        self._dt = dt
 
     def plan(
         self,
@@ -38,8 +39,7 @@ class MinJerkPlanner:
         T_j = np.cbrt(_J_PEAK * np.max(abs_dq / constraints.j_max))
         T = max(T_v, T_a, T_j)
 
-        # Sample at fixed rate
-        N = max(2, int(np.ceil(T * _SAMPLE_HZ)) + 1)
+        N = max(2, int(np.ceil(T / self._dt)) + 1)
         t = np.linspace(0.0, T, N)
         tau = t / T
 

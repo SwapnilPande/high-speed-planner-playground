@@ -5,16 +5,18 @@ from kinodynamic_planner.types import Trajectory
 from kinodynamic_planner.planning.base import JointConstraints
 
 _NJ = 7
-_DT = 1e-3   # 1 kHz output, matching the rest of the stack
 
 
 class RuckigPlanner:
     """Time-optimal joint-space planner using Ruckig (jerk-limited OTG).
 
-    Produces q, qd, qdd at 1 kHz respecting v_max, a_max, and j_max from
-    JointConstraints.  Each joint is planned independently at the per-joint
-    limits; Ruckig synchronises them so all joints finish simultaneously.
+    Produces q, qd, qdd at the configured rate respecting v_max, a_max, and
+    j_max from JointConstraints. Each joint is planned independently at the
+    per-joint limits; Ruckig synchronises them so all joints finish together.
     """
+
+    def __init__(self, dt: float = 1e-3) -> None:
+        self._dt = dt
 
     def plan(
         self,
@@ -22,7 +24,7 @@ class RuckigPlanner:
         q_goal: np.ndarray,
         constraints: JointConstraints,
     ) -> Trajectory:
-        otg  = ruckig.Ruckig(_NJ, _DT)
+        otg  = ruckig.Ruckig(_NJ, self._dt)
         inp  = ruckig.InputParameter(_NJ)
         traj = ruckig.Trajectory(_NJ)
 
@@ -42,8 +44,7 @@ class RuckigPlanner:
         if result == ruckig.Result.ErrorInvalidInput:
             raise ValueError("Ruckig: invalid input (check constraint values)")
 
-        # Sample at 1 kHz
-        N  = max(1, round(traj.duration / _DT))
+        N  = max(1, round(traj.duration / self._dt))
         t  = np.linspace(0.0, traj.duration, N + 1)
         qs, qds, qdds = [], [], []
         for ti in t:

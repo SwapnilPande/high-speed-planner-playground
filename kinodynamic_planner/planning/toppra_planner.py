@@ -8,7 +8,6 @@ from kinodynamic_planner.types import Trajectory
 from kinodynamic_planner.planning.base import JointConstraints
 
 _NJ = 7
-_DT = 1e-3          # 1 kHz output
 _N_WAYPOINTS = 50   # geometric path resolution
 _N_GRIDPTS   = 200  # TOPP-RA constraint gridpoints (denser → less interpolation overshoot)
 _V_MARGIN    = 0.95 # velocity safety factor: constrain to 95% of limit
@@ -22,9 +21,10 @@ class TOPPRAPlanner:
     a_max — determine the speed profile.
     """
 
-    def __init__(self, model_path: str) -> None:
+    def __init__(self, model_path: str, dt: float = 1e-3) -> None:
         self._model = mujoco.MjModel.from_xml_path(model_path)
         self._data  = mujoco.MjData(self._model)
+        self._dt    = dt
 
     def _inv_dyn(self, q: np.ndarray, qd: np.ndarray, qdd: np.ndarray) -> np.ndarray:
         self._data.qpos[:_NJ] = q
@@ -66,7 +66,7 @@ class TOPPRAPlanner:
             raise RuntimeError("TOPP-RA failed to find a feasible trajectory")
 
         T = traj_param.duration
-        N = max(1, round(T / _DT))
+        N = max(1, round(T / self._dt))
         t = np.linspace(0.0, T, N + 1)
 
         qs_out  = traj_param(t)

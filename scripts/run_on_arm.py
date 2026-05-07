@@ -49,21 +49,24 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Skip confirmation prompt")
     p.add_argument("--speed-scale", type=float, default=1.0,
                    help="Scale v_max/a_max/j_max by this factor (e.g. 0.25 for a slow first run)")
+    p.add_argument("--control-hz", type=float, default=1000.0,
+                   help="Trajectory sample rate / RT loop frequency. Drop to 500 if Python overhead caps the loop below 1 kHz.")
     return p
 
 
 # ── Planning ─────────────────────────────────────────────────────────────────
 
 def _plan(args, constraints):
+    dt = 1.0 / args.control_hz
     if args.planner == "toppra":
         from kinodynamic_planner.planning.toppra_planner import TOPPRAPlanner
-        return TOPPRAPlanner(args.plan_model).plan(Q_START, Q_GOAL, constraints)
+        return TOPPRAPlanner(args.plan_model, dt=dt).plan(Q_START, Q_GOAL, constraints)
     elif args.planner == "ruckig":
         from kinodynamic_planner.planning.ruckig_planner import RuckigPlanner
-        return RuckigPlanner().plan(Q_START, Q_GOAL, constraints)
+        return RuckigPlanner(dt=dt).plan(Q_START, Q_GOAL, constraints)
     else:
         from kinodynamic_planner.planning.min_jerk import MinJerkPlanner
-        return MinJerkPlanner().plan(Q_START, Q_GOAL, constraints)
+        return MinJerkPlanner(dt=dt).plan(Q_START, Q_GOAL, constraints)
 
 
 # ── Dry-run (MuJoCo) ─────────────────────────────────────────────────────────
