@@ -140,10 +140,15 @@ class KinovaArm:
         """
         done = threading.Event()
         result: list[int] = []
+        abort_info: list[str] = []
 
         def _on_notif(notif) -> None:
             if notif.action_event in (Base_pb2.ACTION_END, Base_pb2.ACTION_ABORT):
                 result.append(notif.action_event)
+                if notif.action_event == Base_pb2.ACTION_ABORT:
+                    # Capture every field on the notification so the abort
+                    # reason isn't swallowed.
+                    abort_info.append(str(notif).strip())
                 done.set()
 
         notif_handle = self._base.OnNotificationActionTopic(
@@ -166,7 +171,8 @@ class KinovaArm:
         if not finished:
             raise TimeoutError(f"move_to_joints timed out after {timeout:.0f} s")
         if result and result[0] == Base_pb2.ACTION_ABORT:
-            raise RuntimeError("move_to_joints was aborted by the arm")
+            detail = abort_info[0] if abort_info else "(no detail)"
+            raise RuntimeError(f"move_to_joints was aborted by the arm:\n{detail}")
 
     def clear_faults(self) -> None:
         """Clear any latched faults on the arm. Safe to call multiple times."""
