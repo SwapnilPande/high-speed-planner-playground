@@ -155,7 +155,9 @@ class KinovaArm:
         for i in range(_NJ):
             ja = action.reach_joint_angles.joint_angles.joint_angles.add()
             ja.joint_identifier = i
-            ja.value = float(q_rad[i] * _DEG)
+            # High-level API expects angles in [0, 360°) for continuous joints
+            # and the bounded joints' physical range. Wrap from canonical (-π, π].
+            ja.value = float((q_rad[i] * _DEG) % 360.0)
 
         self._base.ExecuteAction(action)
         finished = done.wait(timeout=timeout)
