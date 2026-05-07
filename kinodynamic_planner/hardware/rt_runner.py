@@ -213,6 +213,22 @@ def _control_loop(
         arm.send_joint_positions(traj.q[i], traj.qd[i])
         q_actual, qd_actual = arm.read_joint_state()
 
+        # ── debug: every ~500 ms print what we sent vs what we read back ──
+        if i % max(1, round(0.5 / traj.dt)) == 0:
+            cmd_deg = np.array([
+                arm._command.actuators[j].position for j in range(_NJ)
+            ])
+            fb_deg = np.array([
+                arm._feedback.actuators[j].position for j in range(_NJ)
+            ])
+            diff_deg = (cmd_deg - fb_deg + 180.0) % 360.0 - 180.0
+            print(
+                f"[rt] step {i:5d}  "
+                f"cmd_deg={np.round(cmd_deg, 2)}  "
+                f"fb_deg={np.round(fb_deg, 2)}  "
+                f"diff={np.round(diff_deg, 3)}"
+            )
+
         # ── safety check (wrap to [-π, π] for continuous joints) ──────────
         delta = (q_actual - traj.q[i] + np.pi) % (2 * np.pi) - np.pi
         pos_err = float(np.abs(delta).max())
