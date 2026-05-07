@@ -14,7 +14,6 @@ Examples
 """
 from __future__ import annotations
 import argparse
-import sys
 import time
 import numpy as np
 
@@ -22,10 +21,6 @@ import numpy as np
 # ── Joint-space test move ─────────────────────────────────────────────────────
 Q_START = np.zeros(7)
 Q_GOAL  = np.array([0.0, -0.8, 0.0, -1.5, 0.0, 1.2, 0.0])
-
-# Arm must be within this tolerance of Q_START before the RT loop begins
-_PREFLIGHT_TOL_RAD = 0.05
-
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -69,22 +64,6 @@ def _plan(args, constraints):
         return MinJerkPlanner().plan(Q_START, Q_GOAL, constraints)
 
 
-# ── Pre-flight ────────────────────────────────────────────────────────────────
-
-def _preflight(arm, traj) -> None:
-    """Verify the arm is close enough to the trajectory start to begin safely."""
-    q_current, _ = arm.read_joint_state()
-    err = float(np.abs(q_current - traj.q[0]).max())
-    if err > _PREFLIGHT_TOL_RAD:
-        print(f"\n[preflight] FAIL — arm is {err:.3f} rad from trajectory start "
-              f"(limit {_PREFLIGHT_TOL_RAD} rad).")
-        print(f"  Current  : {np.round(q_current, 3)}")
-        print(f"  Expected : {np.round(traj.q[0], 3)}")
-        print("\nMove the arm to the home position (all zeros) and retry.")
-        sys.exit(1)
-    print(f"[preflight] OK  — arm at start (max error {err:.4f} rad)")
-
-
 # ── Dry-run (MuJoCo) ─────────────────────────────────────────────────────────
 
 def _dry_run(args, traj) -> dict:
@@ -125,20 +104,19 @@ def main() -> None:
     print(f"\nConnecting to arm at {args.arm_ip}...")
     with KinovaArm(ip=args.arm_ip, username=args.username, password=args.password) as arm:
 
-        # Pre-flight: verify arm position
-        _preflight(arm, traj)
+        # Auto-reset: move arm to trajectory start using high-level API
+        print(f"[reset] Moving to start position {np.round(traj.q[0], 3)} ...")
+        arm.move_to_joints(traj.q[0])
+        print("[reset] Done.")
 
-        # Confirm before executing
+        # Hold here until operator signals go
         if not args.yes:
             print(f"\n  Planner   : {args.planner}")
             print(f"  Duration  : {traj.duration:.3f} s")
             print(f"  RT prio   : SCHED_FIFO / priority {args.rt_priority}")
             if args.rt_cpu is not None:
                 print(f"  RT CPU    : core {args.rt_cpu}")
-            answer = input("\nExecute on real arm? [y/N] ").strip().lower()
-            if answer not in ("y", "yes"):
-                print("Aborted.")
-                return
+            input("\nArm is at start. Press Enter to execute...")
 
         print("\n[hardware] Switching to low-level servoing...")
         arm.set_low_level_servoing()

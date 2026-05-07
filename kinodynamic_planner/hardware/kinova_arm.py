@@ -2,6 +2,7 @@
 from __future__ import annotations
 import contextlib
 import math
+import threading
 import numpy as np
 
 # Kortex API — assumed installed on the Jetson
@@ -105,6 +106,40 @@ class KinovaArm:
     # ------------------------------------------------------------------
     # Servoing mode management
     # ------------------------------------------------------------------
+
+    def move_to_joints(self, q_rad: np.ndarray, timeout: float = 60.0) -> None:
+        """Move to joint configuration using the high-level API. Blocks until done.
+
+        Requires arm to be in SINGLE_LEVEL_SERVOING (the default after connect).
+        Raises TimeoutError or RuntimeError if the move fails.
+        """
+        done = threading.Event()
+        result: list[int] = []
+
+        def _on_notif(notif) -> None:
+            if notif.action_event in (Base_pb2.ACTION_END, Base_pb2.ACTION_ABORT):
+                result.append(notif.action_event)
+                done.set()
+
+        notif_handle = self._base.OnNotificationActionTopic(
+            _on_notif, Base_pb2.NotificationOptions()
+        )
+
+        action = Base_pb2.Action()
+        action.name = "move_to_start"
+        for i in range(_NJ):
+            ja = action.reach_joint_angles.joint_angles.joint_angles.add()
+            ja.joint_identifier = i
+            ja.value = float(q_rad[i] * _DEG)
+
+        self._base.ExecuteAction(action)
+        finished = done.wait(timeout=timeout)
+        self._base.Unsubscribe(notif_handle)
+
+        if not finished:
+            raise TimeoutError(f"move_to_joints timed out after {timeout:.0f} s")
+        if result and result[0] == Base_pb2.ACTION_ABORT:
+            raise RuntimeError("move_to_joints was aborted by the arm")
 
     def set_low_level_servoing(self) -> None:
         """Switch arm to LOW_LEVEL_SERVOING. Must be called before the RT loop."""
