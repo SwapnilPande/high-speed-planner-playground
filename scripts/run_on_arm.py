@@ -17,6 +17,8 @@ import argparse
 import time
 import numpy as np
 
+from kinodynamic_planner.types import Trajectory
+
 
 # ── Joint-space test move ─────────────────────────────────────────────────────
 # Joint angles are written in pendant-display form (degrees in [0, 360°)).
@@ -26,8 +28,9 @@ def _canonical(q_deg: np.ndarray) -> np.ndarray:
     q = q_deg * np.pi / 180.0
     return (q + np.pi) % (2.0 * np.pi) - np.pi
 
-Q_START = _canonical(np.array([0.0, 295, 180.0, 213.0, 0.0, 345.0, 95.0]))
-Q_GOAL  = _canonical(np.array([0.0,  82, 180.0, 292.0, 0.0,  60.0, 95.0]))
+Q_START = _canonical(np.array([90.0, 295, 180.0, 213.0, 0.0, 345.0, 95.0]))
+Q_WAYPOINT = _canonical(np.array([83.0, 75, 175.0, 267.0, 0.0, 78.0, 95.0]))
+Q_GOAL  = _canonical(np.array([82.0,  80, 180.0, 283.0, 0.0,  68.0, 93.0]))
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -63,17 +66,39 @@ def _build_parser() -> argparse.ArgumentParser:
 
 # ── Planning ─────────────────────────────────────────────────────────────────
 
-def _plan(args, constraints):
-    dt = 1.0 / args.control_hz
+def _make_planner(args, dt):
     if args.planner == "toppra":
         from kinodynamic_planner.planning.toppra_planner import TOPPRAPlanner
-        return TOPPRAPlanner(args.plan_model, dt=dt).plan(Q_START, Q_GOAL, constraints)
+        return TOPPRAPlanner(args.plan_model, dt=dt)
     elif args.planner == "ruckig":
         from kinodynamic_planner.planning.ruckig_planner import RuckigPlanner
-        return RuckigPlanner(dt=dt).plan(Q_START, Q_GOAL, constraints)
+        return RuckigPlanner(dt=dt)
     else:
         from kinodynamic_planner.planning.min_jerk import MinJerkPlanner
-        return MinJerkPlanner(dt=dt).plan(Q_START, Q_GOAL, constraints)
+        return MinJerkPlanner(dt=dt)
+
+
+def _concat(traj1: Trajectory, traj2: Trajectory) -> Trajectory:
+    # Drop traj2's first sample — it duplicates traj1's last (both at waypoint).
+    dt = traj1.dt
+    N = len(traj1.t) + len(traj2.t) - 1
+    t = np.arange(N) * dt
+    q  = np.concatenate([traj1.q,  traj2.q[1:]],  axis=0)
+    qd = np.concatenate([traj1.qd, traj2.qd[1:]], axis=0)
+    qdd = None
+    if traj1.qdd is not None and traj2.qdd is not None:
+        qdd = np.concatenate([traj1.qdd, traj2.qdd[1:]], axis=0)
+    return Trajectory(t=t, q=q, qd=qd, qdd=qdd)
+
+
+def _plan(args, constraints):
+    dt = 1.0 / args.control_hz
+    planner = _make_planner(args, dt)
+    leg1 = planner.plan(Q_START,    Q_WAYPOINT, constraints)
+    leg2 = planner.plan(Q_WAYPOINT, Q_GOAL,     constraints)
+    print(f"  Leg 1     : {leg1.duration:.3f} s  ({len(leg1.t)} steps)")
+    print(f"  Leg 2     : {leg2.duration:.3f} s  ({len(leg2.t)} steps)")
+    return _concat(leg1, leg2)
 
 
 # ── Dry-run (MuJoCo) ─────────────────────────────────────────────────────────
