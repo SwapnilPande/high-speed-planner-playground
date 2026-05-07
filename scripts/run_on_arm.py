@@ -32,6 +32,23 @@ Q_START = _canonical(np.array([90.0, 295, 180.0, 213.0, 0.0, 345.0, 95.0]))
 Q_WAYPOINT = _canonical(np.array([83.0, 75, 175.0, 267.0, 0.0, 78.0, 95.0]))
 Q_GOAL  = _canonical(np.array([82.0,  80, 180.0, 283.0, 0.0,  68.0, 93.0]))
 
+# Continuous joints can rotate past ±π — bounded joints (indices 1, 3, 5) cannot.
+_CONTINUOUS = np.array([True, False, True, False, True, False, True])
+
+
+def _unwrap_to_shortest(q_target: np.ndarray, q_ref: np.ndarray) -> np.ndarray:
+    """Shift continuous-joint values of q_target by ±2π so the path from q_ref
+    is the shortest angular route. Bounded joints are left untouched.
+
+    Without this, a target on the opposite side of the ±π seam from the start
+    causes the planner to sweep ~2π in joint space instead of the short arc.
+    """
+    q = q_target.copy()
+    delta = q[_CONTINUOUS] - q_ref[_CONTINUOUS]
+    delta = (delta + np.pi) % (2.0 * np.pi) - np.pi
+    q[_CONTINUOUS] = q_ref[_CONTINUOUS] + delta
+    return q
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -94,8 +111,12 @@ def _concat(traj1: Trajectory, traj2: Trajectory) -> Trajectory:
 def _plan(args, constraints):
     dt = 1.0 / args.control_hz
     planner = _make_planner(args, dt)
-    leg1 = planner.plan(Q_START,    Q_WAYPOINT, constraints)
-    leg2 = planner.plan(Q_WAYPOINT, Q_GOAL,     constraints)
+    # Unwrap each subsequent target relative to the previous so continuous
+    # joints take the short arc instead of crossing the ±π seam the long way.
+    wp   = _unwrap_to_shortest(Q_WAYPOINT, Q_START)
+    goal = _unwrap_to_shortest(Q_GOAL,     wp)
+    leg1 = planner.plan(Q_START, wp,   constraints)
+    leg2 = planner.plan(wp,      goal, constraints)
     print(f"  Leg 1     : {leg1.duration:.3f} s  ({len(leg1.t)} steps)")
     print(f"  Leg 2     : {leg2.duration:.3f} s  ({len(leg2.t)} steps)")
     return _concat(leg1, leg2)
