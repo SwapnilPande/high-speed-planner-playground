@@ -83,7 +83,9 @@ def test_warm_start_shape(planner):
     mj_traj = MinJerkPlanner().plan(Q_START, Q_GOAL, constraints)
     T = mj_traj.duration
     N = max(2, round(T * 1000))
-    us = planner._warm_start(mj_traj, T, N)
+    xs_ref, us = planner._warm_start(mj_traj, T, N)
+    assert len(xs_ref) == N + 1
+    assert xs_ref[0].shape == (_NX,)
     assert len(us) == N
     assert us[0].shape == (_NU,)
 
@@ -93,7 +95,7 @@ def test_warm_start_torques_within_limits(planner):
     mj_traj = MinJerkPlanner().plan(Q_START, Q_GOAL, constraints)
     T = mj_traj.duration
     N = max(2, round(T * 1000))
-    us = planner._warm_start(mj_traj, T, N)
+    _, us = planner._warm_start(mj_traj, T, N)
     u_arr = np.array(us)
     assert np.all(u_arr >= planner._tau_min - 1e-9)
     assert np.all(u_arr <= planner._tau_max + 1e-9)

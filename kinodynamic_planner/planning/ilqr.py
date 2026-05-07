@@ -102,21 +102,34 @@ class ILQRPlanner:
         N  = max(2, round(T * 1000))
         x0 = np.concatenate([q_start, np.zeros(_NJ)])
 
-        us = self._warm_start(mj_traj, T, N)
-        xs = self._rollout(x0, us)
-        mu = _MU0
+        xs_ref, us = self._warm_start(mj_traj, T, N)
+
+        # Open-loop rollout cost: this is the Armijo baseline for the first
+        # forward pass.  xs_ref is NOT consistent from x0 (it's the reference
+        # trajectory), so using cost(xs_ref) as baseline would be misleading.
+        xs_open  = self._rollout(x0, us)
+        cost_ref = self._cost(xs_open, us, q_goal, v_max, a_max)
+
+        xs  = xs_ref   # linearise around the reference in the first iteration
+        mu  = _MU0
+        first = True
 
         for _ in range(max_iter):
             As, Bs = self._compute_jacobians(xs, us)
             ks, Ks = self._backward_pass(xs, us, As, Bs, q_goal, v_max, a_max, mu)
 
             xs_new, us_new, _ = self._forward_pass(
-                x0, xs, us, ks, Ks, q_goal, v_max, a_max
+                x0, xs, us, ks, Ks, q_goal, v_max, a_max,
+                cost_old=(cost_ref if first else None),
             )
             if xs_new is None:
                 mu = min(mu * 10, 1e6)
+                if first:
+                    xs = xs_open   # fall back to consistent xs for next try
+                    first = False
                 continue
 
+            first = False
             xs, us = xs_new, us_new
             mu = max(_MU0, mu / 10)
 
@@ -189,14 +202,23 @@ class ILQRPlanner:
 
     def _warm_start(
         self, mj_traj: Trajectory, T: float, N: int
-    ) -> list[np.ndarray]:
-        """Resample min-jerk traj to N steps; compute torques via mj_inverse."""
-        t_new  = np.linspace(0.0, T, N)
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """Resample min-jerk traj; return (xs_ref, us).
+
+        xs_ref[k] = [q_rs[k], qd_rs[k]] from the reference — NOT rolled out
+        from x0.  us[k] is the inverse-dynamics torque at each reference state.
+        _solve_ilqr uses xs_ref as the linearisation point and the open-loop
+        rollout cost as the Armijo baseline for the first forward pass.
+        """
+        t_new  = np.linspace(0.0, T, N + 1)
         t_mj   = mj_traj.t
         q_rs   = np.stack([np.interp(t_new, t_mj, mj_traj.q[:, j])   for j in range(_NJ)], axis=1)
         qd_rs  = np.stack([np.interp(t_new, t_mj, mj_traj.qd[:, j])  for j in range(_NJ)], axis=1)
         qdd_rs = np.stack([np.interp(t_new, t_mj, mj_traj.qdd[:, j]) for j in range(_NJ)], axis=1)
 
+        xs_ref: list[np.ndarray] = [
+            np.concatenate([q_rs[k], qd_rs[k]]) for k in range(N + 1)
+        ]
         us: list[np.ndarray] = []
         for k in range(N):
             self._data.qpos[:_NJ] = q_rs[k]
@@ -205,7 +227,7 @@ class ILQRPlanner:
             mujoco.mj_inverse(self._model, self._data)
             tau = np.clip(self._data.qfrc_inverse[:_NJ], self._tau_min, self._tau_max)
             us.append(tau.copy())
-        return us
+        return xs_ref, us
 
     # ------------------------------------------------------------------
     # iLQR passes
@@ -294,15 +316,17 @@ class ILQRPlanner:
             Qxx = Ak.T @ Vxx @ Ak + np.diag(ell_xx_diag)
 
             Quu_reg = Quu + mu * np.eye(_NU)
-            Kk = -np.linalg.solve(Quu_reg, Qux)
-            kk = -np.linalg.solve(Quu_reg, Qu)
+            # Solve without negation; Schur complement keeps Vxx bounded
+            Kk = np.linalg.solve(Quu_reg, Qux)   # Quu_reg^{-1} Qux
+            kk = np.linalg.solve(Quu_reg, Qu)    # Quu_reg^{-1} Qu
 
-            Vx  = Qx  + Kk.T @ Quu @ kk
-            Vxx = Qxx + Kk.T @ Quu @ Kk
+            # Vxx = Qxx - Qux^T Quu_reg^{-1} Qux  (Schur complement, always <= Qxx)
+            Vx  = Qx  - Kk.T @ Qu
+            Vxx = Qxx - Kk.T @ Qux
             Vxx = (Vxx + Vxx.T) / 2
 
-            ks[k] = kk
-            Ks[k] = Kk
+            ks[k] = -kk   # feedforward: -Quu_reg^{-1} Qu
+            Ks[k] = -Kk   # feedback:    -Quu_reg^{-1} Qux
 
         return ks, Ks
 
@@ -316,8 +340,10 @@ class ILQRPlanner:
         q_goal: np.ndarray,
         v_max: np.ndarray,
         a_max: np.ndarray,
+        cost_old: float | None = None,
     ) -> tuple[list[np.ndarray] | None, list[np.ndarray] | None, float | None]:
-        cost_old = self._cost(xs, us, q_goal, v_max, a_max)
+        if cost_old is None:
+            cost_old = self._cost(xs, us, q_goal, v_max, a_max)
         N = len(us)
 
         for alpha in _ALPHA:
