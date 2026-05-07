@@ -28,7 +28,7 @@ _NJ = 7
 _MAX_POS_ERR_RAD: float = 0.3
 
 # After the trajectory, hold the final position for this many ms before releasing
-_SETTLE_MS: int = 500
+_SETTLE_MS: int = 100
 
 # ──────────────────────────────────────────────────────────────────────────────
 # POSIX / Linux real-time helpers via ctypes
@@ -174,7 +174,7 @@ def run_on_hardware(
 
     try:
         while thread.is_alive() and not stop_event.is_set():
-            time.sleep(0.05)
+            time.sleep(0.005)
     except KeyboardInterrupt:
         print("\n[rt_runner] Ctrl-C — emergency stop")
         stop_event.set()
