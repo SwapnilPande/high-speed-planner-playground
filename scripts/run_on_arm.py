@@ -19,8 +19,15 @@ import numpy as np
 
 
 # ── Joint-space test move ─────────────────────────────────────────────────────
-Q_START = np.array([0.0, 295, 180.0, 212.0, 0.0, 345.0, 78.0]) * np.pi / 180.0
-Q_GOAL  = np.array([0.0, 82, 180, 292, 0.0, 60, 95]) * np.pi / 180.0
+# Joint angles are written in pendant-display form (degrees in [0, 360°)).
+# `_canonical` wraps each into (-π, π] so bounded joints (1, 3, 5) land in
+# their physical range and continuous joints stay well-defined for planning.
+def _canonical(q_deg: np.ndarray) -> np.ndarray:
+    q = q_deg * np.pi / 180.0
+    return (q + np.pi) % (2.0 * np.pi) - np.pi
+
+Q_START = _canonical(np.array([0.0, 295, 180.0, 212.0, 0.0, 345.0, 95.0]))
+Q_GOAL  = _canonical(np.array([0.0,  82, 180.0, 292.0, 0.0,  60.0, 95.0]))
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
