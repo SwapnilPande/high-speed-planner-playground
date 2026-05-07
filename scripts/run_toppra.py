@@ -27,7 +27,7 @@ def main():
     from kinodynamic_planner.runner.playback import run_playback
 
     q_start = np.zeros(7)
-    q_goal  = np.array([0.0, -0.8, 0.0, -1.5, 0.0, 1.2, 0.0])
+    q_goal  = np.array([0.0, 0.8, 0.0, 1.5, 0.0, -1.2, 0.0])
     constraints = JointConstraints.kinova_gen3()
 
     mj_traj = MinJerkPlanner().plan(q_start, q_goal, constraints)
