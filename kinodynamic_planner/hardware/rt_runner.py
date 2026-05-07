@@ -215,18 +215,19 @@ def _control_loop(
 
         # ── debug: every ~500 ms print what we sent vs what we read back ──
         if i % max(1, round(0.5 / traj.dt)) == 0:
-            cmd_deg = np.array([
+            pre_refresh = np.array(arm._last_cmd_deg)        # captured pre-Refresh
+            post_refresh = np.array([
                 arm._command.actuators[j].position for j in range(_NJ)
             ])
             fb_deg = np.array([
                 arm._feedback.actuators[j].position for j in range(_NJ)
             ])
-            diff_deg = (cmd_deg - fb_deg + 180.0) % 360.0 - 180.0
             print(
                 f"[rt] step {i:5d}  "
-                f"cmd_deg={np.round(cmd_deg, 2)}  "
-                f"fb_deg={np.round(fb_deg, 2)}  "
-                f"diff={np.round(diff_deg, 3)}"
+                f"traj_rad={np.round(traj.q[i], 3)}  "
+                f"pre={np.round(pre_refresh, 2)}  "
+                f"post={np.round(post_refresh, 2)}  "
+                f"fb={np.round(fb_deg, 2)}"
             )
 
         # ── safety check (wrap to [-π, π] for continuous joints) ──────────
