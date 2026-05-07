@@ -235,9 +235,6 @@ class KinovaArm:
                 float(qd_rad_s[i] * _DEG) if qd_rad_s is not None else 0.0
             )
             self._command.actuators[i].command_id = fid
-        # Snapshot what we wrote, so callers can verify the protobuf actually
-        # held our values and Refresh isn't silently clearing them.
-        self._last_cmd_deg = [self._command.actuators[i].position for i in range(_NJ)]
         self._feedback = self._cyclic.Refresh(self._command, 0)
 
     # ------------------------------------------------------------------
