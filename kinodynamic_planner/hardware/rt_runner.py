@@ -213,8 +213,9 @@ def _control_loop(
         arm.send_joint_positions(traj.q[i], traj.qd[i])
         q_actual, qd_actual = arm.read_joint_state()
 
-        # ── safety check ───────────────────────────────────────────────────
-        pos_err = float(np.abs(q_actual - traj.q[i]).max())
+        # ── safety check (wrap to [-π, π] for continuous joints) ──────────
+        delta = (q_actual - traj.q[i] + np.pi) % (2 * np.pi) - np.pi
+        pos_err = float(np.abs(delta).max())
         if pos_err > _MAX_POS_ERR_RAD:
             stop_event.set()
             arm.estop()
