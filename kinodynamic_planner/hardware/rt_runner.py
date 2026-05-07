@@ -141,8 +141,9 @@ def run_on_hardware(
         "latency_us": np.empty(N),
     }
 
-    # Lock memory process-wide before spawning the RT thread
-    _lock_memory()
+    # Lock memory process-wide before spawning the RT thread (skip if RT disabled)
+    if rt_priority > 0:
+        _lock_memory()
 
     # Pre-fault all log arrays and trajectory data now so the RT loop is page-fault-free
     _prefault(list(log.values()) + [traj.q, traj.qd])  # type: ignore[arg-type]
@@ -154,7 +155,8 @@ def run_on_hardware(
         try:
             if rt_cpu is not None:
                 os.sched_setaffinity(0, {rt_cpu})
-            _set_sched_fifo(rt_priority)
+            if rt_priority > 0:
+                _set_sched_fifo(rt_priority)
             _control_loop(arm, traj, log, stop_event)
         except BaseException as exc:
             exc_holder[0] = exc
