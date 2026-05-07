@@ -11,7 +11,7 @@ from kortex_api.SessionManager import SessionManager
 from kortex_api.TCPTransport import TCPTransport
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
-from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
+from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2, Session_pb2
 
 _NJ = 7
 _RAD = math.pi / 180.0   # deg → rad
@@ -63,7 +63,7 @@ class KinovaArm:
 
         self._router = RouterClient(self._transport, self._on_error)
 
-        session_info = Common_pb2.CreateSessionInfo()
+        session_info = Session_pb2.CreateSessionInfo()
         session_info.username                       = self._username
         session_info.password                       = self._password
         session_info.session_inactivity_timeout     = 60_000   # ms
