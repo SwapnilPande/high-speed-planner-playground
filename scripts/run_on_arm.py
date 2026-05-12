@@ -55,8 +55,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Plan + execute a trajectory on the Kinova Gen3."
     )
-    p.add_argument("--planner", choices=["toppra", "ruckig", "min-jerk"],
-                   default="toppra")
+    p.add_argument("--planner", choices=["toppra", "ruckig", "min-jerk", "kinova"],
+                   default="toppra",
+                   help="kinova = use the arm's onboard high-level planner "
+                        "(baseline; ignores --control-hz and all RT options)")
     p.add_argument("--arm-ip",   default="192.168.1.10")
     p.add_argument("--username", default="admin")
     p.add_argument("--password", default="admin")
@@ -153,6 +155,16 @@ def main() -> None:
         )
         print(f"[constraints] Scaled v/a/j limits by {s}")
 
+    if args.planner == "kinova":
+        if args.dry_run:
+            raise SystemExit(
+                "--planner kinova runs Kinova's onboard planner — no dry-run "
+                "(MuJoCo doesn't model the firmware's planner). Use a different "
+                "planner for dry-run, or omit --dry-run."
+            )
+        _run_kinova_baseline(args)
+        return
+
     # ── Plan ──────────────────────────────────────────────────────────────
     print(f"Planning with {args.planner}...")
     traj = _plan(args, constraints)
@@ -214,6 +226,62 @@ def main() -> None:
 
         print(f"[hardware] Done in {elapsed:.3f} s wall time")
 
+    _print_log_summary(log)
+    _save_log(log, args.log)
+
+
+# ── Kinova onboard-planner baseline ──────────────────────────────────────────
+
+def _run_kinova_baseline(args) -> None:
+    """Execute Q_START → Q_WAYPOINT → Q_GOAL using the arm's onboard high-level
+    planner. The arm computes and runs its own trajectory; we record actual
+    joint state via cyclic feedback so it can be compared against other planners.
+    """
+    from kinodynamic_planner.hardware.kinova_arm import KinovaArm
+
+    print(f"\nConnecting to arm at {args.arm_ip}...")
+    with KinovaArm(ip=args.arm_ip, username=args.username, password=args.password) as arm:
+        print("[reset] Clearing faults...")
+        arm.clear_faults()
+
+        q_now, _ = arm.read_joint_state()
+        print(f"[reset] Current pose (deg): {np.round(np.degrees(q_now), 1)}")
+
+        print("[reset] Moving to start position ...")
+        arm.move_to_joints(Q_START)
+        print("[reset] Done.")
+
+        if not args.yes:
+            print(f"\n  Planner   : kinova (onboard high-level)")
+            input("\nArm is at start. Press Enter to execute...")
+
+        print("\n[hardware] Executing via Kinova onboard planner...")
+        t0 = time.monotonic()
+        leg1 = arm.move_to_joints_logged(Q_WAYPOINT)
+        leg2 = arm.move_to_joints_logged(Q_GOAL)
+        elapsed = time.monotonic() - t0
+        print(f"[hardware] Done in {elapsed:.3f} s wall time")
+        print(f"  Leg 1 : {leg1['t'][-1]:.3f} s  ({len(leg1['t'])} samples)")
+        print(f"  Leg 2 : {leg2['t'][-1]:.3f} s  ({len(leg2['t'])} samples)")
+
+    # Stitch legs: offset leg2 timestamps so the log is continuous.
+    t_offset = leg1["t"][-1]
+    t  = np.concatenate([leg1["t"], leg2["t"] + t_offset])
+    q  = np.concatenate([leg1["q"], leg2["q"]])
+    qd = np.concatenate([leg1["qd"], leg2["qd"]])
+
+    # Build a log dict compatible with _print_log_summary / downstream plotting.
+    # No commanded trajectory exists for this baseline — q_cmd is set to the
+    # active leg's goal so the "tracking error" line reports distance-to-goal.
+    n1, n2 = len(leg1["t"]), len(leg2["t"])
+    q_cmd = np.vstack([np.tile(Q_WAYPOINT, (n1, 1)), np.tile(Q_GOAL, (n2, 1))])
+    log = {
+        "t":         t,
+        "q_cmd":     q_cmd,
+        "q_actual":  q,
+        "qd_cmd":    np.zeros_like(q),
+        "qd_actual": qd,
+    }
     _print_log_summary(log)
     _save_log(log, args.log)
 

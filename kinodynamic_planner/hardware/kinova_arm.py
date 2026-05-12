@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import math
 import threading
+import time
 import numpy as np
 
 # Kortex API — assumed installed on the Jetson
@@ -173,6 +174,74 @@ class KinovaArm:
         if result and result[0] == Base_pb2.ACTION_ABORT:
             detail = abort_info[0] if abort_info else "(no detail)"
             raise RuntimeError(f"move_to_joints was aborted by the arm:\n{detail}")
+
+    def move_to_joints_logged(
+        self,
+        q_rad: np.ndarray,
+        sample_hz: float = 200.0,
+        timeout: float = 60.0,
+    ) -> dict:
+        """Same as move_to_joints, but poll cyclic feedback during the move
+        and return a log of (t, q, qd) sampled at ~sample_hz.
+
+        Used to capture the actual trajectory produced by Kinova's onboard
+        high-level planner so it can be compared against other planners.
+        """
+        done = threading.Event()
+        result: list[int] = []
+        abort_info: list[str] = []
+
+        def _on_notif(notif) -> None:
+            if notif.action_event in (Base_pb2.ACTION_END, Base_pb2.ACTION_ABORT):
+                result.append(notif.action_event)
+                if notif.action_event == Base_pb2.ACTION_ABORT:
+                    abort_info.append(str(notif).strip())
+                done.set()
+
+        notif_handle = self._base.OnNotificationActionTopic(
+            _on_notif, Base_pb2.NotificationOptions()
+        )
+
+        action = Base_pb2.Action()
+        action.name = "move_to_joints_logged"
+        for i in range(_NJ):
+            ja = action.reach_joint_angles.joint_angles.joint_angles.add()
+            ja.joint_identifier = i
+            ja.value = float((q_rad[i] * _DEG) % 360.0)
+
+        ts, qs, qds = [], [], []
+        period = 1.0 / sample_hz
+        t0 = time.monotonic()
+        self._base.ExecuteAction(action)
+        while not done.is_set():
+            fb = self._cyclic.RefreshFeedback()
+            t_now = time.monotonic() - t0
+            if t_now > timeout:
+                break
+            q  = np.array([fb.actuators[i].position * _RAD for i in range(_NJ)])
+            qd = np.array([fb.actuators[i].velocity * _RAD for i in range(_NJ)])
+            ts.append(t_now)
+            qs.append(q)
+            qds.append(qd)
+            done.wait(timeout=period)
+
+        self._base.Unsubscribe(notif_handle)
+
+        if not done.is_set():
+            raise TimeoutError(f"move_to_joints_logged timed out after {timeout:.0f} s")
+        if result and result[0] == Base_pb2.ACTION_ABORT:
+            detail = abort_info[0] if abort_info else "(no detail)"
+            raise RuntimeError(f"move_to_joints_logged was aborted by the arm:\n{detail}")
+
+        # Refresh cached feedback so subsequent reads reflect post-move state
+        self._feedback = self._cyclic.RefreshFeedback()
+        self._fb_actuators = list(self._feedback.actuators)
+
+        return {
+            "t":  np.asarray(ts),
+            "q":  np.asarray(qs),
+            "qd": np.asarray(qds),
+        }
 
     def clear_faults(self) -> None:
         """Clear faults and ensure the arm is in SINGLE_LEVEL_SERVOING.
