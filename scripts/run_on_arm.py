@@ -28,9 +28,9 @@ def _canonical(q_deg: np.ndarray) -> np.ndarray:
     q = q_deg * np.pi / 180.0
     return (q + np.pi) % (2.0 * np.pi) - np.pi
 
-Q_START = _canonical(np.array([90.0, 295, 180.0, 213.0, 0.0, 345.0, 95.0]))
-Q_WAYPOINT = _canonical(np.array([84.0, 87, 182.0, 243.0, 3, 115, 95.0]))
-Q_GOAL  = _canonical(np.array([82.0,  80, 180.0, 283.0, 0.0,  68.0, 93.0]))
+Q_START = _canonical(np.array([322.0, 303, 180.0, 213.0, 0.0, 350.0, 85.0]))
+Q_WAYPOINT = _canonical(np.array([322, 80, 181, 230.0, 0, 120, 90.0]))
+Q_GOAL  = _canonical(np.array([322.0,  80, 180.0, 254.0, 0.0,  94.0, 88.0]))
 
 # Continuous joints can rotate past ±π — bounded joints (indices 1, 3, 5) cannot.
 _CONTINUOUS = np.array([True, False, True, False, True, False, True])
@@ -117,6 +117,15 @@ def _plan(args, constraints):
     # joints take the short arc instead of crossing the ±π seam the long way.
     wp   = _unwrap_to_shortest(Q_WAYPOINT, Q_START)
     goal = _unwrap_to_shortest(Q_GOAL,     wp)
+
+    # Planners that support waypoints (min-jerk) flow through the waypoint in
+    # one trajectory; others fall back to two stop-at-waypoint legs.
+    if hasattr(planner, "plan_waypoints"):
+        traj = planner.plan_waypoints([Q_START, wp, goal], constraints)
+        print(f"  Stitched  : {traj.duration:.3f} s  "
+              f"({len(traj.t)} steps, flows through waypoint)")
+        return traj
+
     leg1 = planner.plan(Q_START, wp,   constraints)
     leg2 = planner.plan(wp,      goal, constraints)
     print(f"  Leg 1     : {leg1.duration:.3f} s  ({len(leg1.t)} steps)")

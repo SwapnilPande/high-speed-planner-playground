@@ -17,6 +17,7 @@ class Trajectory:
     q: np.ndarray           # joint positions (N, 7)
     qd: np.ndarray          # joint velocities (N, 7)
     qdd: np.ndarray | None = None  # joint accelerations (N, 7), None if not computed
+    qddd: np.ndarray | None = None # joint jerk (N, 7), None if not computed
 
     @property
     def duration(self) -> float:
