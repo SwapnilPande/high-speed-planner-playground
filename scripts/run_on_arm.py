@@ -31,6 +31,11 @@ def _canonical(q_deg: np.ndarray) -> np.ndarray:
 Q_START = _canonical(np.array([90.0, 295, 180.0, 213.0, 0.0, 345.0, 95.0]))
 Q_WAYPOINT = _canonical(np.array([84.0, 87, 182.0, 243.0, 3, 115, 95.0]))
 Q_GOAL  = _canonical(np.array([82.0,  80, 180.0, 283.0, 0.0,  68.0, 93.0]))
+# Q_GRAB: engage with the cup handle from inside. Reached with the gripper
+# still closed (fingers narrow enough to fit through the handle); the gripper
+# then opens here so the fingers spread against the handle's inner walls.
+# Placeholder — tune on the real arm (use scripts/print_joints.py).
+Q_GRAB  = _canonical(np.array([82.0,  76, 180.0, 283.0, 0.0,  68.0, 93.0]))
 
 # Continuous joints can rotate past ±π — bounded joints (indices 1, 3, 5) cannot.
 _CONTINUOUS = np.array([True, False, True, False, True, False, True])
@@ -110,31 +115,104 @@ def _concat(traj1: Trajectory, traj2: Trajectory) -> Trajectory:
     return Trajectory(t=t, q=q, qd=qd, qdd=qdd)
 
 
-def _plan(args, constraints):
+def _plan_steps(args, constraints):
+    """Plan the full grab-and-return sequence as a list of execution steps.
+
+    Each step is one of:
+      {'kind': 'gripper', 'action': 'open' | 'close', 'label': str}
+      {'kind': 'traj',    'traj': Trajectory,         'label': str}
+
+    The arm starts at Q_START with the gripper *closed* (fingers narrow so
+    they can fit through the cup handle), sweeps through Q_WAYPOINT → Q_GOAL
+    → Q_GRAB, opens the gripper to expand inside the handle, then returns to
+    Q_START with the cup.
+
+    Every leg is planned rest-to-rest and concatenated (stop-at-waypoint).
+    Through-waypoint splines were tried but didn't behave reliably, so the
+    forward path is just three back-to-back rest-to-rest moves.
+    """
     dt = 1.0 / args.control_hz
     planner = _make_planner(args, dt)
     # Unwrap each subsequent target relative to the previous so continuous
     # joints take the short arc instead of crossing the ±π seam the long way.
-    wp   = _unwrap_to_shortest(Q_WAYPOINT, Q_START)
-    goal = _unwrap_to_shortest(Q_GOAL,     wp)
+    wp        = _unwrap_to_shortest(Q_WAYPOINT, Q_START)
+    goal      = _unwrap_to_shortest(Q_GOAL,     wp)
+    grab      = _unwrap_to_shortest(Q_GRAB,     goal)
+    ret_start = _unwrap_to_shortest(Q_START,    grab)
+
+    # Forward: Q_START → Q_WAYPOINT → Q_GOAL → Q_GRAB (3 legs, stop at each).
     leg1 = planner.plan(Q_START, wp,   constraints)
     leg2 = planner.plan(wp,      goal, constraints)
+    leg3 = planner.plan(goal,    grab, constraints)
     print(f"  Leg 1     : {leg1.duration:.3f} s  ({len(leg1.t)} steps)")
     print(f"  Leg 2     : {leg2.duration:.3f} s  ({len(leg2.t)} steps)")
-    return _concat(leg1, leg2)
+    print(f"  Leg 3     : {leg3.duration:.3f} s  ({len(leg3.t)} steps)")
+    forward = _concat(_concat(leg1, leg2), leg3)
+
+    # Return: Q_GRAB → Q_START (single rest-to-rest move).
+    ret = planner.plan(grab, ret_start, constraints)
+    print(f"  Return    : {ret.duration:.3f} s  ({len(ret.t)} steps)")
+
+    return [
+        {"kind": "gripper", "action": "close",
+         "label": "close gripper (fingers narrow to fit cup handle)"},
+        {"kind": "traj", "traj": forward,
+         "label": "approach: Q_START → Q_WAYPOINT → Q_GOAL → Q_GRAB"},
+        {"kind": "gripper", "action": "open",
+         "label": "open gripper (fingers spread inside cup handle to grip)"},
+        {"kind": "traj", "traj": ret,
+         "label": "return: Q_GRAB → Q_START (carrying cup)"},
+    ]
 
 
 # ── Dry-run (MuJoCo) ─────────────────────────────────────────────────────────
 
-def _dry_run(args, traj) -> dict:
+def _dry_run(args, steps) -> dict:
+    """Run each trajectory step through MuJoCo back-to-back; print stubs for
+    gripper steps (the sim model has no gripper). Returns a single combined
+    log so the summary line matches the hardware path's shape.
+    """
     from kinodynamic_planner.sim.simulator import Simulator
     from kinodynamic_planner.runner.playback import run_playback
 
-    sim = Simulator(model_path=args.sim_model, control_hz=1.0 / traj.dt)
+    first_traj = next(s["traj"] for s in steps if s["kind"] == "traj")
+    sim = Simulator(model_path=args.sim_model, control_hz=1.0 / first_traj.dt)
     print("[dry-run] Running in MuJoCo simulator (no hardware)")
-    log = run_playback(sim, traj, render=False)
+
+    leg_logs: list[dict] = []
+    for step in steps:
+        if step["kind"] == "gripper":
+            print(f"[dry-run] gripper {step['action']}  — {step['label']}")
+            continue
+        print(f"[dry-run] executing: {step['label']} ({step['traj'].duration:.3f} s)")
+        leg_logs.append(run_playback(sim, step["traj"], render=False))
     sim.close()
-    return log
+    return _concat_logs(leg_logs)
+
+
+def _concat_logs(logs: list[dict]) -> dict:
+    """Concatenate per-segment playback/hardware logs into one combined log,
+    with `t` continued across segment boundaries. Scalar fields (e.g.
+    `overruns`) are summed; array fields are concatenated."""
+    if len(logs) == 1:
+        return logs[0]
+    array_keys = [k for k, v in logs[0].items()
+                  if isinstance(v, np.ndarray) and v.ndim >= 1]
+    parts: dict[str, list[np.ndarray]] = {k: [] for k in array_keys}
+    t_offset = 0.0
+    for L in logs:
+        for k in array_keys:
+            v = np.asarray(L[k])
+            if k == "t":
+                v = v + t_offset
+            parts[k].append(v)
+        t_offset = float(parts["t"][-1][-1])
+    out: dict = {k: np.concatenate(v) for k, v in parts.items()}
+    # Sum scalar fields across segments (e.g., RT overruns)
+    for k, v in logs[0].items():
+        if not isinstance(v, np.ndarray):
+            out[k] = sum(int(L.get(k, 0)) for L in logs)
+    return out
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -167,14 +245,20 @@ def main() -> None:
 
     # ── Plan ──────────────────────────────────────────────────────────────
     print(f"Planning with {args.planner}...")
-    traj = _plan(args, constraints)
-    print(f"  Duration : {traj.duration:.3f} s  ({len(traj.t)} steps @ {1/traj.dt:.0f} Hz)")
+    steps = _plan_steps(args, constraints)
+    total_duration = sum(s["traj"].duration for s in steps if s["kind"] == "traj")
+    print(f"  Total motion : {total_duration:.3f} s across "
+          f"{sum(1 for s in steps if s['kind']=='traj')} trajectory segment(s) "
+          f"+ {sum(1 for s in steps if s['kind']=='gripper')} gripper action(s)")
 
-    _print_trajectory(traj)
+    for s in steps:
+        if s["kind"] == "traj":
+            print(f"\n— {s['label']} —")
+            _print_trajectory(s["traj"])
 
     # ── Dry-run ───────────────────────────────────────────────────────────
     if args.dry_run:
-        log = _dry_run(args, traj)
+        log = _dry_run(args, steps)
         _print_log_summary(log)
         _save_log(log, args.log)
         return
@@ -182,6 +266,8 @@ def main() -> None:
     # ── Hardware execution ────────────────────────────────────────────────
     from kinodynamic_planner.hardware.kinova_arm import KinovaArm
     from kinodynamic_planner.hardware.rt_runner import run_on_hardware
+
+    q_start_traj = next(s["traj"].q[0] for s in steps if s["kind"] == "traj")
 
     print(f"\nConnecting to arm at {args.arm_ip}...")
     with KinovaArm(ip=args.arm_ip, username=args.username, password=args.password) as arm:
@@ -194,38 +280,59 @@ def main() -> None:
         q_now, _ = arm.read_joint_state()
         print(f"[reset] Current pose (rad): {np.round(q_now, 3)}")
         print(f"[reset] Current pose (deg): {np.round(np.degrees(q_now), 1)}")
-        target_deg_api = (np.degrees(traj.q[0]) % 360.0)
-        print(f"[reset] Target  pose (rad): {np.round(traj.q[0], 3)}")
+        target_deg_api = (np.degrees(q_start_traj) % 360.0)
+        print(f"[reset] Target  pose (rad): {np.round(q_start_traj, 3)}")
         print(f"[reset] Target  pose (deg, API form): {np.round(target_deg_api, 1)}")
 
         # Auto-reset: move arm to trajectory start using high-level API
         print(f"[reset] Moving to start position ...")
-        arm.move_to_joints(traj.q[0])
+        arm.move_to_joints(q_start_traj)
         print("[reset] Done.")
 
         # Hold here until operator signals go
         if not args.yes:
             print(f"\n  Planner   : {args.planner}")
-            print(f"  Duration  : {traj.duration:.3f} s")
+            print(f"  Duration  : {total_duration:.3f} s (motion only)")
             print(f"  RT prio   : SCHED_FIFO / priority {args.rt_priority}")
             if args.rt_cpu is not None:
                 print(f"  RT CPU    : core {args.rt_cpu}")
             input("\nArm is at start. Press Enter to execute...")
 
-        print("\n[hardware] Switching to low-level servoing...")
-        arm.set_low_level_servoing()
+        # Walk the step list: gripper actions run in high-level (single-level)
+        # mode; trajectory segments run in low-level. We track the current
+        # servoing mode and only switch when needed.
+        leg_logs: list[dict] = []
+        in_low_level = False
+        t0_total = time.monotonic()
+        for step in steps:
+            if step["kind"] == "gripper":
+                if in_low_level:
+                    print("[hardware] Returning to high-level servoing for gripper...")
+                    arm.set_high_level_servoing()
+                    in_low_level = False
+                print(f"[hardware] Gripper {step['action']}  — {step['label']}")
+                final = arm.open_gripper() if step["action"] == "open" else arm.close_gripper()
+                print(f"[hardware] Gripper settled at value={final:.3f}")
+                continue
 
-        print(f"[hardware] Executing trajectory ({traj.duration:.3f} s)...")
-        t0 = time.monotonic()
-        log = run_on_hardware(
-            arm, traj, constraints,
-            rt_priority=args.rt_priority,
-            rt_cpu=args.rt_cpu,
-        )
-        elapsed = time.monotonic() - t0
+            traj = step["traj"]
+            if not in_low_level:
+                print("[hardware] Switching to low-level servoing...")
+                arm.set_low_level_servoing()
+                in_low_level = True
+            print(f"[hardware] Executing: {step['label']} ({traj.duration:.3f} s)...")
+            t0 = time.monotonic()
+            leg_log = run_on_hardware(
+                arm, traj, constraints,
+                rt_priority=args.rt_priority,
+                rt_cpu=args.rt_cpu,
+            )
+            print(f"[hardware] Segment done in {time.monotonic() - t0:.3f} s wall time")
+            leg_logs.append(leg_log)
 
-        print(f"[hardware] Done in {elapsed:.3f} s wall time")
+        print(f"[hardware] Full sequence done in {time.monotonic() - t0_total:.3f} s wall time")
 
+    log = _concat_logs(leg_logs)
     _print_log_summary(log)
     _save_log(log, args.log)
 
@@ -233,9 +340,11 @@ def main() -> None:
 # ── Kinova onboard-planner baseline ──────────────────────────────────────────
 
 def _run_kinova_baseline(args) -> None:
-    """Execute Q_START → Q_WAYPOINT → Q_GOAL using the arm's onboard high-level
-    planner. The arm computes and runs its own trajectory; we record actual
-    joint state via cyclic feedback so it can be compared against other planners.
+    """Execute the full grab sequence using the arm's onboard high-level
+    planner: close gripper, Q_START → Q_WAYPOINT → Q_GOAL → Q_GRAB, open
+    gripper to grasp the cup, then return to Q_START. The arm computes and
+    runs its own trajectory; we record actual joint state via cyclic feedback
+    so it can be compared against other planners.
     """
     from kinodynamic_planner.hardware.kinova_arm import KinovaArm
 
@@ -247,6 +356,9 @@ def _run_kinova_baseline(args) -> None:
         q_now, _ = arm.read_joint_state()
         print(f"[reset] Current pose (deg): {np.round(np.degrees(q_now), 1)}")
 
+        print("[reset] Closing gripper before motion (fingers narrow to fit cup handle)...")
+        arm.close_gripper()
+
         print("[reset] Moving to start position ...")
         arm.move_to_joints(Q_START)
         print("[reset] Done.")
@@ -257,30 +369,42 @@ def _run_kinova_baseline(args) -> None:
 
         print("\n[hardware] Executing via Kinova onboard planner...")
         t0 = time.monotonic()
-        leg1 = arm.move_to_joints_logged(Q_WAYPOINT)
-        leg2 = arm.move_to_joints_logged(Q_GOAL)
+        leg_wp   = arm.move_to_joints_logged(Q_WAYPOINT)
+        leg_goal = arm.move_to_joints_logged(Q_GOAL)
+        leg_grab = arm.move_to_joints_logged(Q_GRAB)
+        print("[hardware] At Q_GRAB; opening gripper to grasp cup handle...")
+        arm.open_gripper()
+        leg_ret  = arm.move_to_joints_logged(Q_START)
         elapsed = time.monotonic() - t0
         print(f"[hardware] Done in {elapsed:.3f} s wall time")
-        print(f"  Leg 1 : {leg1['t'][-1]:.3f} s  ({len(leg1['t'])} samples)")
-        print(f"  Leg 2 : {leg2['t'][-1]:.3f} s  ({len(leg2['t'])} samples)")
+        print(f"  Leg approach-wp   : {leg_wp['t'][-1]:.3f} s  ({len(leg_wp['t'])} samples)")
+        print(f"  Leg wp->goal      : {leg_goal['t'][-1]:.3f} s  ({len(leg_goal['t'])} samples)")
+        print(f"  Leg goal->grab    : {leg_grab['t'][-1]:.3f} s  ({len(leg_grab['t'])} samples)")
+        print(f"  Leg return->start : {leg_ret['t'][-1]:.3f} s  ({len(leg_ret['t'])} samples)")
 
-    # Stitch legs: offset leg2 timestamps so the log is continuous.
-    t_offset = leg1["t"][-1]
-    t  = np.concatenate([leg1["t"], leg2["t"] + t_offset])
-    q  = np.concatenate([leg1["q"], leg2["q"]])
-    qd = np.concatenate([leg1["qd"], leg2["qd"]])
-
-    # Build a log dict compatible with _print_log_summary / downstream plotting.
-    # No commanded trajectory exists for this baseline — q_cmd is set to the
-    # active leg's goal so the "tracking error" line reports distance-to-goal.
-    n1, n2 = len(leg1["t"]), len(leg2["t"])
-    q_cmd = np.vstack([np.tile(Q_WAYPOINT, (n1, 1)), np.tile(Q_GOAL, (n2, 1))])
+    # Stitch legs: offset timestamps so the log is continuous, and tag each
+    # sample's q_cmd with the active leg's target so "tracking error" reports
+    # distance-to-goal per segment.
+    legs = [
+        (leg_wp,   Q_WAYPOINT),
+        (leg_goal, Q_GOAL),
+        (leg_grab, Q_GRAB),
+        (leg_ret,  Q_START),
+    ]
+    ts, qs, qds, q_cmds = [], [], [], []
+    t_offset = 0.0
+    for leg, target in legs:
+        ts.append(leg["t"] + t_offset)
+        qs.append(leg["q"])
+        qds.append(leg["qd"])
+        q_cmds.append(np.tile(target, (len(leg["t"]), 1)))
+        t_offset += leg["t"][-1]
     log = {
-        "t":         t,
-        "q_cmd":     q_cmd,
-        "q_actual":  q,
-        "qd_cmd":    np.zeros_like(q),
-        "qd_actual": qd,
+        "t":         np.concatenate(ts),
+        "q_cmd":     np.concatenate(q_cmds),
+        "q_actual":  np.concatenate(qs),
+        "qd_cmd":    np.zeros_like(np.concatenate(qs)),
+        "qd_actual": np.concatenate(qds),
     }
     _print_log_summary(log)
     _save_log(log, args.log)
