@@ -320,6 +320,17 @@ class KinovaArm:
     # State and command
     # ------------------------------------------------------------------
 
+    def refresh_feedback(self) -> None:
+        """Pull a fresh cyclic feedback frame so the next `read_joint_state()`
+        reflects the arm's *current* state, not the snapshot at connect time.
+
+        Use this when you want to poll the arm outside of a control loop
+        (e.g., a teach-mode joint readout). Inside `run_on_hardware`'s RT loop
+        the feedback is updated as a side effect of `send_joint_positions`.
+        """
+        self._feedback = self._cyclic.RefreshFeedback()
+        self._fb_actuators = list(self._feedback.actuators)
+
     def read_joint_state(self) -> tuple[np.ndarray, np.ndarray]:
         """Return (q_rad, qd_rad_s) from the most recent Refresh feedback.
 
@@ -353,6 +364,71 @@ class KinovaArm:
             a.command_id = fid
         self._feedback = self._cyclic.Refresh(self._command, 0)
         self._fb_actuators = list(self._feedback.actuators)
+
+    # ------------------------------------------------------------------
+    # Gripper
+    # ------------------------------------------------------------------
+
+    def set_gripper(
+        self,
+        value: float,
+        tolerance: float = 0.02,
+        stall_eps: float = 0.001,
+        poll_dt: float = 0.05,
+        timeout: float = 5.0,
+    ) -> float:
+        """Drive the Robotiq gripper to a position.
+
+        `value` is in [0, 1] where 0 = fully open and 1 = fully closed.
+        Blocks until either the target is reached, motion stalls (e.g. the
+        fingers are pressing on an object), or `timeout` elapses. Returns the
+        final measured position.
+
+        Sent over the high-level Base service, so the arm must be in
+        SINGLE_LEVEL_SERVOING (use `set_high_level_servoing()` to switch back
+        from a low-level run before commanding the gripper).
+        """
+        cmd = Base_pb2.GripperCommand()
+        cmd.mode = Base_pb2.GRIPPER_POSITION
+        finger = cmd.gripper.finger.add()
+        finger.finger_identifier = 1
+        finger.value = float(value)
+        self._base.SendGripperCommand(cmd)
+
+        req = Base_pb2.GripperRequest()
+        req.mode = Base_pb2.GRIPPER_POSITION
+        t0 = time.monotonic()
+        prev: float | None = None
+        current: float = float("nan")
+        while time.monotonic() - t0 < timeout:
+            time.sleep(poll_dt)
+            m = self._base.GetMeasuredGripperMovement(req)
+            if not m.finger:
+                continue
+            current = m.finger[0].value
+            if abs(current - value) < tolerance:
+                return current
+            # Stall: position barely changed between polls — likely pressing
+            # against an object (e.g., the inside of the cup handle). Accept.
+            if prev is not None and abs(current - prev) < stall_eps:
+                return current
+            prev = current
+        return current
+
+    def open_gripper(self, **kwargs) -> float:
+        return self.set_gripper(0.0, **kwargs)
+
+    def close_gripper(self, **kwargs) -> float:
+        return self.set_gripper(1.0, **kwargs)
+
+    def set_high_level_servoing(self) -> None:
+        """Switch arm back to SINGLE_LEVEL_SERVOING (the high-level mode).
+
+        Use this between low-level trajectory segments to send high-level
+        commands like SendGripperCommand. After the gripper move, call
+        `set_low_level_servoing()` again before the next trajectory.
+        """
+        self._restore_high_level()
 
     # ------------------------------------------------------------------
     # Safety
